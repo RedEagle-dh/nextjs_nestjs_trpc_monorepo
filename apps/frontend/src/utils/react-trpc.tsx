@@ -35,6 +35,11 @@ export function ReactTRPCProvider({ children }: { children: React.ReactNode }) {
 			links: [
 				httpBatchLink({
 					url: "http://localhost:3001/trpc",
+					headers: () => {
+						return {
+							"Content-Type": "application/json",
+						};
+					},
 				}),
 			],
 		}),

@@ -1,4 +1,4 @@
-import { ZodSchema } from "zod";
+import { ZodSchema, ZodTypeDef } from "zod";
 
 export const TRPC_ROUTER_KEY = Symbol("TRPC_ROUTER_KEY");
 export const TRPC_PROCEDURE_KEY = Symbol("TRPC_PROCEDURE_KEY");
@@ -13,6 +13,19 @@ export interface TrpcProcedureMetadata {
 	outputType?: ZodSchema<any>; // Optional, aber gut für den Generator
 	middlewares: TrpcMiddlewareDefinition[]; // Für benutzerdefinierte Middleware
 	isProtected: boolean; // Für Standard-Auth-Middleware
+}
+
+export interface TrpcProcedureOptions<
+	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+	TInput extends ZodSchema<any, ZodTypeDef, any> | undefined = undefined,
+	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+	TOutput extends ZodSchema<any, ZodTypeDef, any> | undefined = undefined,
+> {
+	inputType?: TInput;
+	outputType?: TOutput; // Für den Generator und Backend-Validierung
+	type: "query" | "mutation";
+	isProtected?: boolean; // Standard-Authentifizierung
+	middlewares?: TrpcMiddlewareDefinition[]; // Benutzerdefinierte Middleware
 }
 
 export interface TrpcRouterMetadata {
@@ -36,15 +49,19 @@ export function TrpcRouter(metadata?: TrpcRouterMetadata): ClassDecorator {
  * Kennzeichnet eine Methode innerhalb einer @TrpcRouter()-Klasse als tRPC-Prozedur.
  * @param opts Optionen wie Input-Schema, Output-Schema, Typ (query/mutation)
  */
-export function TrpcProcedure(opts: {
+export function TrpcProcedure<
 	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-	inputType?: ZodSchema<any>;
+	TInput extends ZodSchema<any, ZodTypeDef, any> | undefined,
 	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-	outputType?: ZodSchema<any>; // Für den Generator
-	type: "query" | "mutation";
-	isProtected?: boolean; // Standard-Authentifizierung
-	middlewares?: TrpcMiddlewareDefinition[]; // Benutzerdefinierte Middleware
-}): MethodDecorator {
+	TOutput extends ZodSchema<any, ZodTypeDef, any> | undefined,
+>(optionsArgument: TrpcProcedureOptions<TInput, TOutput>): MethodDecorator {
+	// Umbenannt für Klarheit
+	console.log(
+		// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
+		`@TrpcProcedure Decorator called for a method. Received options:`,
+		JSON.stringify(optionsArgument, null, 2), // Loggt das Argument des Decorators
+	);
+
 	return (
 		// biome-ignore lint/suspicious/noExplicitAny: <explanation>
 		target: any,
@@ -53,16 +70,20 @@ export function TrpcProcedure(opts: {
 	) => {
 		const procedures =
 			Reflect.getMetadata(TRPC_PROCEDURE_KEY, target.constructor) || [];
-		procedures.push({
+
+		const procedureDefinitionToStore = {
+			// Das Objekt, das gespeichert wird
 			methodName: propertyKey,
-			inputType: opts.inputType,
-			outputType: opts.outputType,
-			type: opts.type,
-			isProtected: opts.isProtected || false,
-			middlewares: opts.middlewares || [],
-			// Die eigentliche Funktion ist descriptor.value
+			options: optionsArgument, // << KORREKTUR HIER: Das gesamte 'optionsArgument'-Objekt wird unter dem Schlüssel 'options' gespeichert
 			implementation: descriptor.value,
-		});
+		};
+
+		// Optional: Loggen, was genau gespeichert wird
+		// console.log(`Storing procedure definition for ${target.constructor.name}.${String(propertyKey)}:`,
+		//    JSON.stringify(procedureDefinitionToStore, (k,v) => typeof v === 'function' ? '[Function]' : (v instanceof ZodType ? '[ZodType]' : v) , 2)
+		// );
+
+		procedures.push(procedureDefinitionToStore);
 		Reflect.defineMetadata(
 			TRPC_PROCEDURE_KEY,
 			procedures,

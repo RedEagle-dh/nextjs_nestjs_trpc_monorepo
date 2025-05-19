@@ -14,6 +14,7 @@ export class UserTrpcRouter {
 			timestamp: z.string(),
 		}),
 		type: "query",
+		isProtected: false,
 	})
 	async getHealthcheck() {
 		console.log(
