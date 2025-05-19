@@ -1,0 +1,20 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "commonjs",
+		"declaration": true,
+		"declarationMap": true, // Gut für Go-to-Definition in der IDE über Pakete hinweg
+		"sourceMap": true,
+		"outDir": "./dist",
+		"rootDir": ".",
+		"strict": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"moduleResolution": "node",
+		"composite": true, // Nötig für TypeScript Project References, optional hier
+		"baseUrl": "./" // Falls Sie interne Pfad-Aliase in diesem Paket verwenden
+	},
+	"include": ["server.ts"],
+	"exclude": ["node_modules", "dist"]
+}
