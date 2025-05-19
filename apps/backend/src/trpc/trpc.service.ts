@@ -9,6 +9,7 @@ export class TRPCService {
 	constructor(private readonly authService: AuthService) {}
 
 	async handleRequest(req: Request, res: Response) {
+		console.log("Handling tRPC request...");
 		// Token aus Request-Header extrahieren
 		const authHeader = req.headers.authorization;
 		let user:

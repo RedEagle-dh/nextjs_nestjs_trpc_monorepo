@@ -2,8 +2,8 @@
 	"name": "@n2-stickstoff-monorepo/trpc-server",
 	"version": "1.0.0",
 	"description": "",
-	"main": "dist/server.js",
-	"types": "dist/server.d.ts",
+	"main": "dist/trpc-contract.js",
+	"types": "dist/trpc-contract.d.ts",
 	"scripts": {
 		"build": "tsc -p tsconfig.json"
 	},

@@ -21,6 +21,7 @@
 		"test:e2e": "jest --config ./test/jest-e2e.json"
 	},
 	"dependencies": {
+		"@n2-stickstoff-monorepo/trpc-server": "workspace:*",
 		"@nestjs/common": "^11.1.1",
 		"@nestjs/config": "^4.0.2",
 		"@nestjs/core": "^11.1.1",
@@ -29,8 +30,8 @@
 		"@trpc/server": "^11.1.2",
 		"jsonwebtoken": "^9.0.2",
 		"reflect-metadata": "^0.2.2",
-		"@n2-stickstoff-monorepo/trpc-server": "workspace:*",
 		"rxjs": "^7.8.2",
+		"ts-morph": "^25.0.1",
 		"zod": "^3.24.4"
 	},
 	"devDependencies": {
@@ -40,6 +41,7 @@
 		"@swc/cli": "^0.7.7",
 		"@swc/core": "^1.11.24",
 		"@types/express": "^5.0.2",
+		"@types/fs-extra": "^11.0.4",
 		"@types/jest": "^29.5.14",
 		"@types/jsonwebtoken": "^9.0.9",
 		"@types/node": "^22.15.19",
@@ -52,17 +54,24 @@
 		"ts-loader": "^9.5.2",
 		"ts-node": "^10.9.2",
 		"tsconfig-paths": "^4.2.0",
+		"tsx": "^4.19.4",
 		"typescript": "^5.8.3",
 		"typescript-eslint": "^8.32.1"
 	},
 	"jest": {
-		"moduleFileExtensions": ["js", "json", "ts"],
+		"moduleFileExtensions": [
+			"js",
+			"json",
+			"ts"
+		],
 		"rootDir": "src",
 		"testRegex": ".*\\.spec\\.ts$",
 		"transform": {
 			"^.+\\.(t|j)s$": "ts-jest"
 		},
-		"collectCoverageFrom": ["**/*.(t|j)s"],
+		"collectCoverageFrom": [
+			"**/*.(t|j)s"
+		],
 		"coverageDirectory": "../coverage",
 		"testEnvironment": "node"
 	}

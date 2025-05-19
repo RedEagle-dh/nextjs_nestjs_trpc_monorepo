@@ -15,6 +15,6 @@
 		"composite": true, // Nötig für TypeScript Project References, optional hier
 		"baseUrl": "./" // Falls Sie interne Pfad-Aliase in diesem Paket verwenden
 	},
-	"include": ["server.ts"],
+	"include": ["server.ts", "trpc-contract.ts"],
 	"exclude": ["node_modules", "dist"]
 }
