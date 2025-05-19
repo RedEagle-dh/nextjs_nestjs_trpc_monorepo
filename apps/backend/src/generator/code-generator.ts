@@ -2,44 +2,39 @@
 import * as path from "node:path";
 import * as fs from "fs-extra";
 import {
-	CallExpression,
-	ClassDeclaration,
 	Decorator,
-	MethodDeclaration,
 	Node,
-	ObjectLiteralExpression,
 	Project,
 	PropertyAssignment,
 	SyntaxKind,
 } from "ts-morph";
 
-// Interne Struktur zur Speicherung extrahierter Prozedurinformationen
 interface ExtractedProcedureInfo {
 	procedureName: string;
 	domain?: string;
 	trpcType: "query" | "mutation";
 	isProtected: boolean;
 	inputTypeCode: string;
-	outputTypeCode?: string; // Der String für die .output() Direktive
-	generatedOutputPlaceholder: string; // Der String für den return-Wert des Placeholders
+	outputTypeCode?: string;
+	generatedOutputPlaceholder: string;
 }
 
 export class TrpcContractGenerator {
 	private project: Project;
 	private backendSrcPath: string;
-	private contractGeneratedRouterFile: string; // Pfad zur zu generierenden Datei
-	private contractTrpcContextImportPath: string; // Pfad zum TRPCContext-Typ
+	private contractGeneratedRouterFile: string;
+	private contractTrpcContextImportPath: string;
 
 	constructor(config: {
 		backendSrcDir: string;
 		backendTsConfig: string;
 		outputContractFile: string;
-		trpcContextImportPath?: string; // z.B. './trpc-context' oder '@n2-monorepo/trpc-contract'
+		trpcContextImportPath?: string;
 	}) {
 		this.backendSrcPath = config.backendSrcDir;
 		this.contractGeneratedRouterFile = config.outputContractFile;
 		this.contractTrpcContextImportPath =
-			config.trpcContextImportPath || "./trpc-context"; // Default
+			config.trpcContextImportPath || "./trpc-context";
 
 		this.project = new Project({
 			tsConfigFilePath: config.backendTsConfig,
@@ -57,8 +52,6 @@ export class TrpcContractGenerator {
 			if (optionProperty && Node.isPropertyAssignment(optionProperty)) {
 				const initializer = optionProperty.getInitializer();
 				if (initializer) {
-					// Wir nehmen den Text des Initializers. Das sollte z.B. "z.object({ ... })" sein.
-					// Der Generator muss sicherstellen, dass 'z' in der generierten Datei verfügbar ist.
 					return initializer.getText();
 				}
 			}
@@ -67,7 +60,7 @@ export class TrpcContractGenerator {
 	}
 
 	public async generateContract(): Promise<void> {
-		const procedures: ExtractedProcedureInfo[] = []; // ExtractedProcedureInfo enthält generatedOutputPlaceholder
+		const procedures: ExtractedProcedureInfo[] = [];
 		const sourceFiles = this.project.getSourceFiles();
 
 		for (const sourceFile of sourceFiles) {
@@ -117,7 +110,7 @@ export class TrpcContractGenerator {
 						?.getInitializerIfKind(SyntaxKind.StringLiteral)
 						?.getLiteralText() as "query" | "mutation";
 
-					let isProtected = false; // Standardwert
+					let isProtected = false;
 					if (isProtectedProperty) {
 						const initializer =
 							isProtectedProperty.getInitializer();
@@ -147,26 +140,24 @@ export class TrpcContractGenerator {
 
 					const inputTypeCode =
 						inputSchemaNode?.getText() || "z.undefined()";
-					const outputTypeCode = outputSchemaNode?.getText(); // Dieser Code-String ist für die .output() Direktive
+					const outputTypeCode = outputSchemaNode?.getText();
 
-					// Generiere den Placeholder String basierend auf dem AST-Knoten des Output-Schemas
 					const generatedOutputPlaceholder =
 						this.generatePlaceholderFromZodNode(outputSchemaNode);
 
-					// Hier wird das fehlende Feld hinzugefügt:
 					procedures.push({
 						procedureName,
 						domain,
 						trpcType,
 						isProtected,
 						inputTypeCode,
-						outputTypeCode, // Für die .output() Direktive
-						generatedOutputPlaceholder, // <<< KORREKTUR HIER
+						outputTypeCode,
+						generatedOutputPlaceholder,
 					});
 				}
 			}
 		}
-		this.writeContractFile(procedures); // Aufruf bleibt gleich
+		this.writeContractFile(procedures);
 	}
 
 	private generatePlaceholderFromZodNode(
@@ -174,18 +165,15 @@ export class TrpcContractGenerator {
 		depth = 0,
 	): string {
 		if (!node || depth > 5) {
-			// Schutz vor zu tiefer Rekursion
 			return `undefined /* ${!node ? "Kein Schema-Knoten für Placeholder" : "Maximale Rekursionstiefe erreicht"} */`;
 		}
 
-		// z.string(), z.number(), etc. sind CallExpressions auf PropertyAccessExpressions (z.B. z.string)
 		if (Node.isCallExpression(node)) {
-			const expression = node.getExpression(); // Der Teil vor den Klammern ()
+			const expression = node.getExpression();
 
 			if (Node.isPropertyAccessExpression(expression)) {
-				// z.B. z.string, z.object, z.array
-				const baseObjectText = expression.getExpression().getText(); // Sollte 'z' sein
-				const methodName = expression.getName(); // z.B. "string", "object", "array"
+				const baseObjectText = expression.getExpression().getText();
+				const methodName = expression.getName();
 
 				if (baseObjectText === "z") {
 					switch (methodName) {
@@ -197,8 +185,7 @@ export class TrpcContractGenerator {
 						case "boolean":
 							return "false";
 						case "date":
-							// Ein valider ISO-String als Placeholder
-							return `'${new Date(0).toISOString()}'`; // Oder "new Date().toISOString()" für Dynamik
+							return `'${new Date(0).toISOString()}'`;
 						case "null":
 							return "null";
 						case "undefined":
@@ -210,8 +197,8 @@ export class TrpcContractGenerator {
 							return literalArg
 								? literalArg.getText()
 								: "undefined /* Defektes z.literal */";
-						case "enum": // z.enum(['A', 'B'])
-						case "nativeEnum": // z.nativeEnum(MyEnum)
+						case "enum":
+						case "nativeEnum":
 							// biome-ignore lint/correctness/noSwitchDeclarations: <explanation>
 							const enumArgs = node.getArguments()[0];
 							if (
@@ -223,8 +210,7 @@ export class TrpcContractGenerator {
 									? firstVal.getText()
 									: '"PLACEHOLDER_ENUM"';
 							}
-							// Für nativeEnums ist es komplexer, den ersten Wert zu bekommen.
-							return '"PLACEHOLDER_ENUM"'; // Fallback
+							return '"PLACEHOLDER_ENUM"';
 						case "object":
 							// biome-ignore lint/correctness/noSwitchDeclarations: <explanation>
 							const objectArg = node.getArguments()[0];
@@ -239,7 +225,7 @@ export class TrpcContractGenerator {
 									if (Node.isPropertyAssignment(prop)) {
 										const key = prop
 											.getNameNode()
-											.getText(); // Sicherer Weg, den Schlüsselnamen zu bekommen
+											.getText();
 										const valueSchemaNode =
 											prop.getInitializer();
 										objStr += ` "${key}": ${this.generatePlaceholderFromZodNode(valueSchemaNode, depth + 1)}`;
@@ -252,38 +238,25 @@ export class TrpcContractGenerator {
 							}
 							return "{ /* Defektes z.object für Placeholder */ }";
 						case "array":
-							// Für den Placeholder reicht oft ein leeres Array.
-							// Um typsicher zu sein, könnte man ein Element generieren:
-							// const elementSchemaNode = node.getArguments()[0];
-							// return `[${this.generatePlaceholderFromZodNode(elementSchemaNode, depth + 1)}]`;
 							return "[]";
-						// Hier weitere Zod-Typen hinzufügen: tuple, union, discriminatedUnion, record, map, set, etc.
-						// Optional, Nullable, Default (werden oft als chained methods behandelt)
 					}
 				}
 			}
 		} else if (Node.isPropertyAccessExpression(node)) {
-			// Behandelt Chained Methods wie .optional()
-			const expressionText = node.getText(); // z.B. "z.string().optional()"
-			const baseExpression = node.getExpression(); // Der Teil vor dem .methodName()
-			const methodName = node.getName(); // z.B. "optional", "nullable", "default"
+			const baseExpression = node.getExpression();
+			const methodName = node.getName();
 
 			if (methodName === "optional" || methodName === "nullable") {
-				// Für optionale/nullable Felder ist undefined ein valider Placeholder
 				return "undefined";
 			}
 			if (methodName === "default") {
-				// Für .default(), den Placeholder für den inneren Typ generieren
 				return this.generatePlaceholderFromZodNode(
 					baseExpression,
 					depth + 1,
 				);
 			}
-			// Falls es ein direkter Identifier ist (z.B. eine Schema-Variable), wird es komplexer.
-			// Für den MVP fokussieren wir uns auf inline z.method() Aufrufe.
 		}
 
-		// Fallback für nicht direkt behandelte oder komplexe Zod-Strukturen
 		const schemaText = node?.getText().substring(0, 50) || "Unbekannt";
 		console.warn(
 			`Generiere 'undefined as any' für Zod AST Knoten Typ: ${node?.getKindName()}, Text: ${schemaText}...`,
@@ -342,7 +315,6 @@ export class TrpcContractGenerator {
 						code += `    .output(${p.outputTypeCode})\n`; // Verwende den extrahierten Output-Schema-Code
 					}
 					code += `    .${p.trpcType}(({ input, ctx }) => {\n`;
-					code += `      console.warn("tRPC contract placeholder for '<span class="math-inline">\{p\.domain ? p\.domain \+ '\.' \: ''\}</span>{p.procedureName}' called.");\n`;
 					code += `      return ${p.generatedOutputPlaceholder};\n`; // HIER DIE ÄNDERUNG
 					// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
 					code += `    }),\n`;
@@ -357,7 +329,6 @@ export class TrpcContractGenerator {
 						code += `      .output(${p.outputTypeCode})\n`;
 					}
 					code += `      .${p.trpcType}(({ input, ctx }) => {\n`;
-					code += `        console.warn("tRPC contract placeholder for '${domain}.${p.procedureName}' called.");\n`;
 					code += `        return ${p.generatedOutputPlaceholder}\n`;
 					// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
 					code += `      }),\n`;
@@ -387,7 +358,6 @@ export class TrpcContractGenerator {
 			const optionProperty = decoratorArg.getProperty(optionName) as
 				| PropertyAssignment
 				| undefined;
-			// Wichtig: getInitializer() gibt den Node der rechten Seite der Zuweisung zurück
 			return optionProperty?.getInitializer();
 		}
 		return undefined;

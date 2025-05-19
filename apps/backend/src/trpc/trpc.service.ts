@@ -1,33 +1,26 @@
 import { TRPCContext } from "@n2-stickstoff-monorepo/trpc-server/dist/server";
-// src/trpc/trpc.service.ts
-import { Injectable, OnModuleInit } from "@nestjs/common"; // OnModuleInit hinzufügen
-// Stelle sicher, dass dein Contract-Paket TRPCContext exportiert.
-// (z.B. packages/trpc-contract/src/trpc-context.ts)
-import { AnyRouter } from "@trpc/server"; // Für die Typisierung des Routers
+import { Injectable, OnModuleInit } from "@nestjs/common";
+import { AnyRouter } from "@trpc/server";
 import {
 	CreateHTTPContextOptions,
 	createHTTPHandler,
 } from "@trpc/server/adapters/standalone";
 import { Request, Response } from "express";
-import { AuthService, JWTPayload } from "../auth/auth.service";
+import { AuthService } from "../auth/auth.service";
 import { MainTrpcRouterFactory } from "./trpc.router";
 
 @Injectable()
 export class TRPCService implements OnModuleInit {
-	// OnModuleInit implementieren
-	// Der httpHandler wird jetzt in onModuleInit initialisiert
-	private httpHandler!: ReturnType<typeof createHTTPHandler<AnyRouter>>; // Definitiv Zuweisung mit !
+	private httpHandler!: ReturnType<typeof createHTTPHandler<AnyRouter>>;
 	private actualAppRouter!: AnyRouter;
 
 	constructor(
 		private readonly authService: AuthService,
-		private readonly routerFactory: MainTrpcRouterFactory, // Injiziere die Router Factory
+		private readonly routerFactory: MainTrpcRouterFactory,
 	) {}
 
-	// onModuleInit wird aufgerufen, nachdem alle Module initialisiert wurden
-	// und MainTrpcRouterFactory seinen appRouter gebaut hat.
 	onModuleInit() {
-		this.actualAppRouter = this.routerFactory.getAppRouter(); // Hole den echten Router
+		this.actualAppRouter = this.routerFactory.getAppRouter();
 
 		if (
 			!this.actualAppRouter ||
@@ -46,20 +39,18 @@ export class TRPCService implements OnModuleInit {
 		}
 
 		this.httpHandler = createHTTPHandler({
-			router: this.actualAppRouter, // Verwende den echten, dynamisch erstellten Router
+			router: this.actualAppRouter,
 			createContext: ({
 				req,
 				res,
 			}: CreateHTTPContextOptions): TRPCContext => {
-				// Die Kontext-Erstellung bleibt gleich
 				const authHeader = req.headers.authorization;
-				let user: TRPCContext["user"] = null; // Typ korrigiert auf TRPCContext['user']
+				let user: TRPCContext["user"] = null;
 
 				if (authHeader?.startsWith("Bearer ")) {
 					const token = authHeader.substring(7);
 					try {
 						const payload = this.authService.decodeToken(token);
-						// Stelle sicher, dass das Payload-Objekt mit TRPCContext['user'] übereinstimmt
 						user = {
 							id: payload.id,
 							username: payload.username,
@@ -75,20 +66,12 @@ export class TRPCService implements OnModuleInit {
 			onError: ({ error, path, type, input, ctx }) => {
 				console.error(
 					`tRPC Error in TRPCService (executing actual router) - Path: ${path}, Type: ${type}, Input: ${JSON.stringify(input)}, Error: ${error.message}`,
-					// error.cause, // Bei Bedarf
 				);
-				// Hier kannst du weiteres Logging/Fehlerbehandlung hinzufügen
 			},
 		});
 	}
 
 	async handleRequest(req: Request, res: Response) {
-		// Der console.log hier ist gut für das Debugging des Controllers
-		// console.log("TRPCService: handleRequest called by TRPCController");
-		console.log(
-			`TRPCController: ${req.url}, ${req.originalUrl}, ${req.baseUrl} ${req.path}`,
-		);
-
 		if (!this.httpHandler) {
 			console.error(
 				"FATAL: TRPCService.httpHandler not initialized. Likely an issue in onModuleInit or MainTrpcRouterFactory.",
@@ -97,7 +80,6 @@ export class TRPCService implements OnModuleInit {
 			return;
 		}
 
-		const originalUrl = req.url;
 		const controllerBasePath = "/trpc";
 
 		let effectiveUrl = req.url;
@@ -105,34 +87,22 @@ export class TRPCService implements OnModuleInit {
 			req.originalUrl.startsWith(`${controllerBasePath}/`) &&
 			req.url.startsWith(`${controllerBasePath}/`)
 		) {
-			// Dieser Fall sollte eigentlich nicht eintreten, wenn req.url korrekt relativ ist.
-			// Aber um den Fehler "Path: trpc/..." abzufangen:
 			effectiveUrl = req.url.substring(controllerBasePath.length);
-			console.log(
-				`TRPCService: Adjusting req.url from '${req.url}' to '${effectiveUrl}' for tRPC handler.`,
-			);
-
-			// @ts-ignore
 		} else if (
 			req.url.startsWith(controllerBasePath) &&
 			// @ts-ignore
 			controllerBasePath !== "/"
 		) {
-			// Falls der Controller im Root gemountet wäre, würde das nicht zutreffen.
-			// Dies ist eine Vorsichtsmaßnahme, falls req.url nicht korrekt relativiert wurde.
 			effectiveUrl = req.url.substring(controllerBasePath.length);
-			console.log(
-				`TRPCService: Adjusting req.url (fallback) from '${req.url}' to '${effectiveUrl}' for tRPC handler.`,
-			);
 		}
 
-		const tempOriginalUrl = req.url; // Sichere die aktuelle req.url
-		req.url = effectiveUrl; // Setze die für tRPC bereinigte URL
+		const tempOriginalUrl = req.url;
+		req.url = effectiveUrl;
 
 		try {
 			this.httpHandler(req, res);
 		} finally {
-			req.url = tempOriginalUrl; // Setze req.url zurück, falls andere NestJS Handler folgen (unwahrscheinlich bei @All)
+			req.url = tempOriginalUrl;
 		}
 	}
 }

@@ -8,9 +8,6 @@ export class TRPCController {
 
 	@All("*path")
 	async handleTRPC(@Req() req: Request, @Res() res: Response) {
-		console.log(
-			`TRPCController: ${req.url}, ${req.originalUrl}, ${req.baseUrl} ${req.path}`,
-		);
 		return this.trpcService.handleRequest(req, res);
 	}
 }

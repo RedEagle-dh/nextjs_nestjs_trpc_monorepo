@@ -11,7 +11,6 @@ import {
 	TrpcProcedureOptions,
 } from "./decorators";
 
-// Initialisiere tRPC hier für den Backend-Router
 const t = initTRPC.context<TRPCContext>().create();
 
 @Injectable()
@@ -19,8 +18,8 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 	private appRouterInstance!: AnyRouter;
 
 	constructor(
-		private readonly moduleRef: ModuleRef, // Zum Holen von Provider-Instanzen
-		private readonly modulesContainer: ModulesContainer, // Zum Scannen aller Module/Provider
+		private readonly moduleRef: ModuleRef,
+		private readonly modulesContainer: ModulesContainer,
 	) {}
 
 	onModuleInit() {
@@ -38,7 +37,6 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 
 	public getAppRouter(): AnyRouter {
 		if (!this.appRouterInstance) {
-			// Dieser Fall sollte durch onModuleInit abgedeckt sein, aber als Sicherheitsnetz:
 			console.warn(
 				"AppRouter not yet built, building now (should have happened in onModuleInit).",
 			);
@@ -48,9 +46,6 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 	}
 
 	private _buildAppRouter(): AnyRouter {
-		// Schritt 1: Sammle alle Prozedurdefinitionen, gruppiert nach Domain und dann Methodenname
-		// Dies erlaubt verschiedenen Klassen, zur selben Domain beizutragen.
-		// Key: Domain-Name (oder '__ROOT__'), Value: Record<string, tRPCProcedure>
 		const proceduresToBuildGrouped: Record<
 			string,
 			// biome-ignore lint/suspicious/noExplicitAny: <explanation>
@@ -90,7 +85,6 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 
 				for (const procDefFromMeta of procedureDefinitionsFromMetadata) {
 					const methodName = procDefFromMeta.methodName as string;
-					// Typisierungen aus deinem Code übernommen
 					const options =
 						procDefFromMeta.options as TrpcProcedureOptions<
 							// biome-ignore lint/suspicious/noExplicitAny: <explanation>
@@ -103,7 +97,7 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 						procDefFromMeta.implementation as Function;
 
 					if (typeof implementation !== "function") {
-						/* ... Warnung ... */ continue;
+						continue;
 					}
 
 					let procedureBuilder = options.isProtected
@@ -185,14 +179,12 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 			}
 		}
 
-		// Schritt 2: Baue die finale Router-Struktur
-		const finalRouterDefinition = {}; // Typ von tRPC für Router-Definitionen
+		const finalRouterDefinition = {};
 
 		for (const domainKey in proceduresToBuildGrouped) {
 			const proceduresInDomain = proceduresToBuildGrouped[domainKey];
 			if (Object.keys(proceduresInDomain).length === 0) {
 				if (domainKey !== "__ROOT__") {
-					// Root kann leer sein, wenn alle Prozeduren in Domains sind
 					console.warn(
 						`Domain '${domainKey}' has no procedures defined after processing all providers, skipping.`,
 					);
