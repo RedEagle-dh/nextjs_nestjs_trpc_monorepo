@@ -1,5 +1,4 @@
-import type {} from "@n2-stickstoff-monorepo/trpc-server";
-import { TRPCContext } from "@n2-stickstoff-monorepo/trpc-server/dist/server";
+import { TRPCContext } from "@mono/trpc-server/dist/server";
 // src/trpc/trpc-main.router.ts (MVP-Implementierung)
 import { Injectable, OnModuleInit, Type } from "@nestjs/common";
 import { ModuleRef, ModulesContainer } from "@nestjs/core";

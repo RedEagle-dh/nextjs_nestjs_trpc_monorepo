@@ -17,7 +17,8 @@
 		"generate:trpc-contract": "tsx ./src/generator/run.ts"
 	},
 	"dependencies": {
-		"@n2-stickstoff-monorepo/trpc-server": "workspace:*",
+		"@mono/trpc-server": "workspace:*",
+		"@mono/prisma": "workspace:*",
 		"@nestjs/common": "^11.1.1",
 		"@nestjs/config": "^4.0.2",
 		"@nestjs/core": "^11.1.1",

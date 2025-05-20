@@ -27,7 +27,7 @@ Das Projekt ist in mehrere Kernbereiche unterteilt:
     * Integriert tRPC über einen typsicheren Client, der auf dem generierten Vertrag aus dem `packages/trpc`-Paket basiert.
 
 * **tRPC Schicht:**
-    * **`packages/trpc` (agiert als Contract-Paket, Name in `package.json`: `@n2-stickstoff-monorepo/trpc-server`):**
+    * **`packages/trpc` (agiert als Contract-Paket, Name in `package.json`: `@mono/trpc-server`):**
         * Enthält die Definition des `TRPCContext` (in `server.ts`).
         * Beinhaltet den **automatisch generierten tRPC-Vertrag** (`trpc-contract.ts`). Diese Datei definiert den `appRouter` mit allen Prozeduren, deren Input- und Output-Zod-Schemata (extrahiert aus dem Backend) und Placeholder-Implementierungen für reine Typsicherheitszwecke im Frontend.
     * **`apps/backend/src/trpc/decorators.ts`:** Definiert die `@TrpcRouter`- und `@TrpcProcedure`-Decorators, die im Backend zur Kennzeichnung von tRPC-Definitionen verwendet werden.
@@ -69,7 +69,7 @@ n2_stickstoff_monorepo/
 │       │       └── page.tsx         # Beispielkomponente mit tRPC-Aufruf
 │       └── package.json
 ├── packages/
-│   ├── trpc/           # Fungiert als Contract-Paket (Name: @n2-stickstoff-monorepo/trpc-server)
+│   ├── trpc/           # Fungiert als Contract-Paket (Name: @mono/trpc-server)
 │   │   ├── server.ts               # Definition von TRPCContext
 │   │   ├── trpc-contract.ts        # GENERIERTER AppRouter für Frontend-Typen
 │   │   └── package.json
@@ -170,7 +170,7 @@ Nachdem du Änderungen an den tRPC-Prozedurdefinitionen im Backend vorgenommen h
 * Führe das Generierungsskript aus (angenommen, es ist in apps/backend/package.json oder der Root package.json definiert):
 ```Bash
 
-pnpm --filter @n2-stickstoff-monorepo/backend generate:trpc-contract # Beispielhafter Aufruf
+pnpm --filter @mono/backend generate:trpc-contract # Beispielhafter Aufruf
 ```
 
 (Das Skript apps/backend/src/generator/run.ts führt die TrpcContractGenerator-Klasse aus.)

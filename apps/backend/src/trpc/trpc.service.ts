@@ -1,4 +1,4 @@
-import { TRPCContext } from "@n2-stickstoff-monorepo/trpc-server/dist/server";
+import { TRPCContext } from "@mono/trpc-server/dist/server";
 import { Injectable, OnModuleInit } from "@nestjs/common";
 import { AnyRouter } from "@trpc/server";
 import {
