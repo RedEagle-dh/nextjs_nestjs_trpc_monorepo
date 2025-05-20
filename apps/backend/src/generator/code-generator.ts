@@ -2,12 +2,12 @@
 import * as path from "node:path";
 import * as fs from "fs-extra";
 import {
-	Decorator,
+	type Decorator,
+	type EnumDeclaration,
 	Node,
-	ObjectLiteralExpression,
 	Project,
-	PropertyAssignment,
-	SourceFile,
+	type PropertyAssignment,
+	type SourceFile,
 	SyntaxKind,
 } from "ts-morph";
 
@@ -21,13 +21,28 @@ interface ExtractedProcedureInfo {
 	generatedOutputPlaceholder: string;
 }
 
+interface DeclarationInfo {
+	code: string;
+	dependencies: Set<string>; // Set of keys (filePath#name)
+	sourceFilePath: string;
+	name: string;
+}
+
+interface ExternalImportDetails {
+	defaultImport?: string;
+	namespaceImport?: string;
+	namedImports: Set<string>;
+}
+
 export class TrpcContractGenerator {
 	private project: Project;
 	private backendSrcPath: string;
 	private contractGeneratedRouterFile: string;
 	private contractTrpcContextImportPath: string;
-	private typesAndEnumsToDefineInContract = new Map<string, string>(); // Identifier -> Code-String der Definition
-	private importsToAddToContract = new Map<string, Set<string>>(); // ModuleSpecifier -> Set von namedImports
+
+	private collectedDeclarationInfo = new Map<string, DeclarationInfo>();
+	private visitedDeclarations = new Set<string>();
+	private collectedExternalImports = new Map<string, ExternalImportDetails>();
 
 	constructor(config: {
 		backendSrcDir: string;
@@ -46,156 +61,283 @@ export class TrpcContractGenerator {
 		this.project.addSourceFilesAtPaths(`${this.backendSrcPath}/**/*.ts`);
 	}
 
-	private resolveIdentifierAndGetCode(
+	private cleanExportKeyword(text: string): string {
+		return text.replace(/^export\s+/gm, "");
+	}
+
+	private isExternalImport(importPath: string): boolean {
+		return !importPath.startsWith(".") && !importPath.startsWith("/");
+	}
+
+	private processSchemaNodeAndCollectDependencies(
 		node: Node | undefined,
-		sourceFile: SourceFile,
-	): { code: string; isInlineable: boolean } | undefined {
+		sourceFileWhereNodeIsUsed: SourceFile,
+	): string {
 		if (!node) {
-			// Wenn kein Node übergeben wird, direkt undefined zurückgeben
-			return undefined;
+			return "z.undefined()";
 		}
 
 		if (
 			(Node.isCallExpression(node) &&
 				node.getExpression().getText().startsWith("z.")) ||
 			(Node.isPropertyAccessExpression(node) &&
-				node.getExpression().getText().startsWith("z.")) // Für z.B. z.Schema.optional()
+				node.getExpression().getText().startsWith("z."))
 		) {
-			// Bevor wir den Code nehmen, sammeln wir Abhängigkeiten *innerhalb* dieses Zod-Schemas
-			this.collectDependenciesFromSchemaNode(node, sourceFile); // Bestehende Methode
-			return { code: node.getText(), isInlineable: true };
+			node.forEachDescendant((descendantNode) => {
+				if (Node.isIdentifier(descendantNode)) {
+					const identifierText = descendantNode.getText();
+					if (identifierText === "z") return;
+
+					const parent = descendantNode.getParent();
+					if (
+						parent &&
+						Node.isPropertyAssignment(parent) &&
+						parent.getNameNode() === descendantNode
+					) {
+						return;
+					}
+					if (
+						parent &&
+						Node.isBindingElement(parent) &&
+						parent.getNameNode() === descendantNode
+					) {
+						return;
+					}
+					if (
+						parent &&
+						Node.isParameterDeclaration(parent) &&
+						parent.getNameNode() === descendantNode
+					) {
+						return;
+					}
+
+					this.resolveAndCollectDependencies(
+						descendantNode,
+						descendantNode.getSourceFile() ||
+							sourceFileWhereNodeIsUsed,
+					);
+				} else if (Node.isPropertyAccessExpression(descendantNode)) {
+					const expression = descendantNode.getExpression();
+					if (expression.getText() !== "z") {
+						this.resolveAndCollectDependencies(
+							descendantNode,
+							descendantNode.getSourceFile() ||
+								sourceFileWhereNodeIsUsed,
+						);
+					}
+				}
+			});
+			return node.getText();
 		}
 
 		if (Node.isIdentifier(node) || Node.isPropertyAccessExpression(node)) {
-			const symbol = node.getSymbol();
-			if (!symbol) return { code: node.getText(), isInlineable: false }; // Fallback: Identifier-Name
-
-			const declarations = symbol.getDeclarations();
-			if (!declarations || declarations.length === 0)
-				return { code: node.getText(), isInlineable: false };
-
-			const decl = declarations[0]; // Nimm die erste Deklaration
-
-			// Ist es ein Import?
-			if (Node.isImportSpecifier(decl) || Node.isNamespaceImport(decl)) {
-				// const importDeclaration = decl.getImportClause()?.getParent() || // Alte Zeile
-				//                           decl.getParentIfKind(SyntaxKind.ImportDeclaration); // Alte Zeile
-				const importDeclaration = decl.getFirstAncestorByKind(
-					SyntaxKind.ImportDeclaration,
-				);
-
-				if (importDeclaration) {
-					// Node.isImportDeclaration(importDeclaration) ist implizit
-					const moduleSpecifier =
-						importDeclaration.getModuleSpecifierValue();
-					let name: string;
-
-					if (Node.isImportSpecifier(decl)) {
-						// Für import { OriginalName as AliasName } from '...' -> AliasName
-						// Für import { Name } from '...' -> Name
-						name = decl.getAliasNode()?.getText() || decl.getName();
-					} else {
-						// Muss NamespaceImport sein, z.B. import * as MyNamespace from '...'
-						name = decl.getNameNode().getText(); // Ergibt "MyNamespace"
-					}
-
-					// ... Rest der Logik für Importe bleibt gleich ...
-					if (
-						moduleSpecifier.startsWith("packages/") ||
-						moduleSpecifier.startsWith("@") ||
-						!moduleSpecifier.startsWith(".")
-					) {
-						if (!this.importsToAddToContract.has(moduleSpecifier)) {
-							this.importsToAddToContract.set(
-								moduleSpecifier,
-								new Set(),
-							);
-						}
-						this.importsToAddToContract
-							.get(moduleSpecifier)
-							?.add(name);
-						return { code: name, isInlineable: false }; // Verwende den importierten Identifier-Namen
-					}
-					console.warn(
-						`WARN: Relativer Backend-Import für '${name}' aus '${moduleSpecifier}'. Versuche Definition zu kopieren. Dies ist experimentell und funktioniert am besten für Enums und einfache Typ-Aliase oder Konstanten.`,
-					);
-					// Wenn es ein relativer Import innerhalb des Backends ist, wird die Definition kopiert (nächste if-Blöcke)
-				}
-			}
-
-			// Ist es eine Enum-, Typ- oder Variablendeklaration im Backend? -> Definition kopieren
-			if (
-				Node.isEnumDeclaration(decl) ||
-				Node.isTypeAliasDeclaration(decl) ||
-				Node.isInterfaceDeclaration(decl)
-			) {
-				// InterfaceDeclaration hinzugefügt
-				const name = decl.getNameNode().getText();
-				const code = decl.getText(); // Hole den gesamten Text der Deklaration
-				if (!this.typesAndEnumsToDefineInContract.has(name)) {
-					this.typesAndEnumsToDefineInContract.set(name, code);
-					console.log(
-						`INFO: Queued to copy definition for '${name}' from ${decl.getSourceFile().getFilePath()}`,
-					);
-				}
-				return { code: name, isInlineable: false }; // Verwende den Namen der kopierten Definition
-			}
-
-			if (Node.isVariableDeclaration(decl)) {
-				const initializer = decl.getInitializer();
-				if (initializer) {
-					const name = decl.getNameNode().getText();
-					// Hole das gesamte Statement (z.B. "export const name = ...;")
-					const variableStatement = decl.getVariableStatement();
-					const code = variableStatement
-						? variableStatement.getText() // Beinhaltet 'export', 'const' etc.
-						: `const ${name} = ${initializer.getText()};`; // Fallback, sollte nicht oft nötig sein
-
-					if (!this.typesAndEnumsToDefineInContract.has(name)) {
-						this.typesAndEnumsToDefineInContract.set(name, code);
-						console.log(
-							`INFO: Definition für Variable '${name}' aus ${decl.getSourceFile().getFilePath()} zum Kopieren vorgemerkt.`,
-						);
-					}
-					return { code: name, isInlineable: false };
-				}
-			}
-
-			if (Node.isPropertyDeclaration(decl)) {
-				const initializer = decl.getInitializer();
-				if (initializer) {
-					const name = decl.getNameNode().getText();
-					// decl.getText() liefert die gesamte Property-Deklaration (z.B. "static readonly meinSchema = ...;")
-					const code = decl.getText();
-					if (!this.typesAndEnumsToDefineInContract.has(name)) {
-						this.typesAndEnumsToDefineInContract.set(name, code);
-						console.log(
-							`INFO: Definition für Property '${name}' aus ${decl.getSourceFile().getFilePath()} zum Kopieren vorgemerkt.`,
-						);
-					}
-					return { code: name, isInlineable: false };
-				}
-			}
-
-			return { code: node.getText(), isInlineable: false }; // Fallback
+			this.resolveAndCollectDependencies(node, sourceFileWhereNodeIsUsed);
+			return node.getText();
 		}
-		return { code: node.getText(), isInlineable: true }; // Direkter Zod-Aufruf etc.
+
+		console.warn(
+			`WARN: Unerwarteter Knotentyp '${node.getKindName()}' in processSchemaNodeAndCollectDependencies. Text: ${node.getText().substring(0, 100)}`,
+		);
+		return node.getText();
 	}
 
-	private collectTypeDefsFromNode(
-		node: Node | undefined,
-		originatingSourceFile: SourceFile,
+	private resolveAndCollectDependencies(
+		node: Node,
+		sourceFileContext: SourceFile,
 	): void {
-		if (!node) return;
+		const symbol = node.getSymbol();
+		if (!symbol) {
+			return;
+		}
 
-		node.forEachDescendant((descendantNode) => {
+		const declarations = symbol.getDeclarations();
+		if (!declarations || declarations.length === 0) {
+			return;
+		}
+
+		const decl = declarations[0];
+		const declSourceFile = decl.getSourceFile();
+		const originalDeclName = symbol.getName();
+		const declarationKey = `${declSourceFile.getFilePath()}#${originalDeclName}`;
+
+		if (this.visitedDeclarations.has(declarationKey)) {
+			return;
+		}
+
+		const importDeclaration = decl.getFirstAncestorByKind(
+			SyntaxKind.ImportDeclaration,
+		);
+		if (importDeclaration) {
+			const moduleSpecifier = importDeclaration.getModuleSpecifierValue();
+			const importedSourceFile =
+				importDeclaration.getModuleSpecifierSourceFile();
+
+			let importNameForCollector: string | undefined;
+			let isNamespace = false;
+			let isDefault = false;
+
+			if (Node.isImportSpecifier(decl)) {
+				const originalName = decl.getNameNode().getText();
+				const aliasName = decl.getAliasNode()?.getText();
+				importNameForCollector = aliasName
+					? `${originalName} as ${aliasName}`
+					: originalName;
+			} else if (Node.isNamespaceImport(decl)) {
+				importNameForCollector = decl.getNameNode().getText();
+				isNamespace = true;
+			} else if (Node.isImportClause(decl) && decl.getDefaultImport()) {
+				importNameForCollector = decl.getDefaultImport()?.getText();
+				isDefault = true;
+			}
+
+			if (this.isExternalImport(moduleSpecifier)) {
+				if (!this.collectedExternalImports.has(moduleSpecifier)) {
+					this.collectedExternalImports.set(moduleSpecifier, {
+						namedImports: new Set(),
+					});
+				}
+				const importDetails =
+					// biome-ignore lint/style/noNonNullAssertion: <explanation>
+					this.collectedExternalImports.get(moduleSpecifier)!;
+				if (importNameForCollector) {
+					if (isNamespace)
+						importDetails.namespaceImport = importNameForCollector;
+					else if (isDefault)
+						importDetails.defaultImport = importNameForCollector;
+					else importDetails.namedImports.add(importNameForCollector);
+				}
+				return;
+			}
+
+			if (importedSourceFile) {
+				let targetDeclName = originalDeclName;
+				if (Node.isImportSpecifier(decl)) {
+					targetDeclName = decl.getNameNode().getText();
+				}
+
+				const exportedSymbol = importedSourceFile
+					.getExportSymbols()
+					.find((s) => s.getName() === targetDeclName);
+				const targetDeclaration = exportedSymbol?.getDeclarations()[0];
+
+				if (Node.isImportClause(decl) && decl.getDefaultImport()) {
+					const defaultExportSymbol =
+						importedSourceFile.getDefaultExportSymbol();
+					const defaultTargetDeclaration =
+						defaultExportSymbol?.getDeclarations()[0];
+					if (defaultTargetDeclaration) {
+						this.resolveAndCollectDependencies(
+							defaultTargetDeclaration,
+							importedSourceFile,
+						);
+					} else {
+						console.warn(
+							`WARN: Konnte Default-Export in ${importedSourceFile.getFilePath()} nicht auflösen.`,
+						);
+					}
+					return;
+				}
+
+				if (targetDeclaration) {
+					this.resolveAndCollectDependencies(
+						targetDeclaration,
+						importedSourceFile,
+					);
+				} else if (!isNamespace) {
+					console.warn(
+						`WARN: Konnte das exportierte Symbol '${targetDeclName}' in '${importedSourceFile.getFilePath()}' nicht finden für den Import in '${sourceFileContext.getFilePath()}' (Node: ${node.getText()}).`,
+					);
+				}
+				return;
+			}
+			console.warn(
+				`WARN: Konnte die Quelldatei für den lokalen Import '${moduleSpecifier}' nicht finden.`,
+			);
+			return;
+		}
+
+		if (
+			Node.isEnumDeclaration(decl) ||
+			Node.isTypeAliasDeclaration(decl) ||
+			Node.isInterfaceDeclaration(decl) ||
+			Node.isVariableDeclaration(decl) ||
+			Node.isClassDeclaration(decl) ||
+			Node.isPropertyDeclaration(decl)
+		) {
+			const currentDeclKey = `${declSourceFile.getFilePath()}#${originalDeclName}`;
+
+			if (this.visitedDeclarations.has(currentDeclKey)) return;
+			this.visitedDeclarations.add(currentDeclKey);
+
+			let statementNodeToGetTextFrom: Node = decl;
+			if (Node.isVariableDeclaration(decl)) {
+				statementNodeToGetTextFrom =
+					decl.getVariableStatement() ?? decl;
+			} else if (Node.isPropertyDeclaration(decl)) {
+				if (!decl.isStatic()) {
+					console.warn(
+						`WARN: Instanz-Property '${originalDeclName}' wird referenziert. Contract generiert typischerweise statische/Top-Level Deklarationen.`,
+					);
+					this.visitedDeclarations.delete(currentDeclKey);
+					return;
+				}
+			}
+
+			const codeText = this.cleanExportKeyword(
+				statementNodeToGetTextFrom.getText(),
+			);
+			const dependenciesForThisDecl = new Set<string>();
+
+			this.collectInternalDependencies(
+				decl,
+				declSourceFile,
+				dependenciesForThisDecl,
+			);
+
+			this.collectedDeclarationInfo.set(currentDeclKey, {
+				code: codeText,
+				dependencies: dependenciesForThisDecl,
+				sourceFilePath: declSourceFile.getFilePath(),
+				name: originalDeclName,
+			});
+		}
+	}
+
+	private collectInternalDependencies(
+		declarationNode: Node,
+		sourceFileOfDeclaration: SourceFile,
+		dependenciesSetToPopulate: Set<string>,
+	): void {
+		let declarationName: string | undefined;
+
+		// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+		if (typeof (declarationNode as any).getNameNode === "function") {
+			// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+			const nameNode = (declarationNode as any).getNameNode();
+			if (nameNode && typeof nameNode.getText === "function") {
+				declarationName = nameNode.getText();
+			}
+		}
+		if (
+			!declarationName &&
+			// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+			typeof (declarationNode as any).getName === "function"
+		) {
+			// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+			const name = (declarationNode as any).getName();
+			if (typeof name === "string") {
+				declarationName = name;
+			}
+		}
+
+		declarationNode.forEachDescendant((descendantNode) => {
 			if (Node.isIdentifier(descendantNode)) {
-				const name = descendantNode.getText();
-				// Einfache Filterung für globale/primitive Typen
+				const idText = descendantNode.getText();
+				if (declarationName && idText === declarationName) return;
+
 				if (
+					idText === "z" ||
 					[
-						"z",
-						"ZodType",
 						"string",
 						"number",
 						"boolean",
@@ -212,130 +354,143 @@ export class TrpcContractGenerator {
 						"null",
 						"undefined",
 						"TRPCContext",
-					].includes(name) ||
-					(typeof globalThis !== "undefined" && name in globalThis)
+						"ReturnType",
+						"InstanceType",
+						"Error",
+						"Buffer",
+					].includes(idText) ||
+					(typeof globalThis !== "undefined" && idText in globalThis)
 				) {
 					return;
 				}
 
-				// Wenn dieser Identifier bereits bekannt ist (wird kopiert oder importiert), überspringen
-				if (
-					this.typesAndEnumsToDefineInContract.has(name) ||
-					Array.from(this.importsToAddToContract.values()).some(
-						(set) => set.has(name),
+				const parent = descendantNode.getParent();
+				if (parent) {
+					if (
+						Node.isPropertyAssignment(parent) &&
+						parent.getNameNode() === descendantNode
 					)
-				) {
-					return;
+						return;
+					if (
+						Node.isPropertySignature(parent) &&
+						parent.getNameNode() === descendantNode
+					)
+						return;
+					if (
+						Node.isMethodDeclaration(parent) &&
+						parent.getNameNode() === descendantNode
+					)
+						return;
+					if (
+						Node.isMethodSignature(parent) &&
+						parent.getNameNode() === descendantNode
+					)
+						return;
+					if (
+						Node.isParameterDeclaration(parent) &&
+						parent.getNameNode() === descendantNode
+					)
+						return;
+					if (
+						Node.isBindingElement(parent) &&
+						parent.getNameNode() === descendantNode
+					)
+						return;
+					if (
+						Node.isEnumMember(parent) &&
+						parent.getNameNode() === descendantNode
+					)
+						return;
 				}
 
-				const symbol = descendantNode.getSymbol();
-				if (symbol) {
-					const declarations = symbol.getDeclarations();
-					if (declarations && declarations.length > 0) {
-						const decl = declarations[0]; // Nimm die erste Deklaration
-						// Rufe die Logik auf, um diese Deklaration zu kopieren oder zu importieren
-						// Wichtig: decl.getSourceFile() ist hier die Datei, wo der Typ *definiert* ist.
-						this.resolveIdentifierAndGetCode(
-							decl,
-							decl.getSourceFile(),
-						);
-					} else {
-						console.warn(
-							`WARN: Keine Deklaration für Typ-Identifier '${name}' gefunden, der in ${originatingSourceFile.getFilePath()} verwendet wird.`,
+				const idSymbol = descendantNode.getSymbol();
+				if (idSymbol) {
+					const idDeclarations = idSymbol.getDeclarations();
+					if (idDeclarations && idDeclarations.length > 0) {
+						const idActualDecl = idDeclarations[0];
+						const idDeclSourceFile = idActualDecl.getSourceFile();
+						const idDeclOriginalName = idSymbol.getName();
+						const depKey = `${idDeclSourceFile.getFilePath()}#${idDeclOriginalName}`;
+
+						dependenciesSetToPopulate.add(depKey);
+						this.resolveAndCollectDependencies(
+							descendantNode,
+							sourceFileOfDeclaration,
 						);
 					}
 				}
-			}
-			// Rekursiv für Typargumente, z.B. MyGeneric<TypeA, TypeB>
-			if (Node.isTypeReference(descendantNode)) {
-				// biome-ignore lint/complexity/noForEach: <explanation>
-				descendantNode
-					.getTypeArguments()
-					.forEach((arg) =>
-						this.collectTypeDefsFromNode(
-							arg,
-							originatingSourceFile,
-						),
+			} else if (Node.isPropertyAccessExpression(descendantNode)) {
+				const expression = descendantNode.getExpression();
+				if (expression.getText() !== "z") {
+					this.resolveAndCollectDependencies(
+						descendantNode,
+						sourceFileOfDeclaration,
 					);
+				}
 			}
-			// Man könnte hier auch andere Node-Typen hinzufügen, die Typ-Identifier enthalten können
+			if (Node.isTypeReference(descendantNode)) {
+				const typeArgs = descendantNode.getTypeArguments();
+				for (const typeArgNode of typeArgs) {
+					this.resolveAndCollectDependencies(
+						typeArgNode,
+						sourceFileOfDeclaration,
+					);
+				}
+			}
 		});
 	}
 
-	private collectDependenciesFromSchemaNode(
-		schemaNode: Node,
-		sourceFileOfSchemaUsage: SourceFile,
-	): void {
-		if (!schemaNode) return;
+	private topologicallySortDeclarations(): string[] {
+		const graph = new Map<string, Set<string>>();
+		const sortedCode: string[] = [];
+		const visitedForSort = new Set<string>();
+		const fullySorted = new Set<string>();
 
-		schemaNode.forEachDescendant((descendantNode, traversal) => {
-			if (Node.isIdentifier(descendantNode)) {
-				const identifierName = descendantNode.getText();
+		for (const key of this.collectedDeclarationInfo.keys()) {
+			graph.set(
+				key,
+				// biome-ignore lint/style/noNonNullAssertion: <explanation>
+				this.collectedDeclarationInfo.get(key)!.dependencies,
+			);
+		}
 
-				// Ignoriere 'z' und globale Typen/Variablen
-				if (
-					identifierName === "z" ||
-					[
-						"Promise",
-						"Date",
-						"Array",
-						"Object",
-						"String",
-						"Number",
-						"Boolean",
-						"Symbol",
-					].includes(identifierName) ||
-					(typeof globalThis !== "undefined" &&
-						identifierName in globalThis)
-				) {
-					return;
-				}
-
-				// Wenn es ein Funktionsparameter ist (z.B. in transform), ignoriere ihn hier
-				if (descendantNode.getParentIfKind(SyntaxKind.Parameter)) {
-					return;
-				}
-
-				const parentNode = descendantNode.getParent();
-				if (parentNode && Node.isPropertyAssignment(parentNode)) {
-					// Prüfe, ob der Parent eine PropertyAssignment ist
-					if (parentNode.getNameNode() === descendantNode) {
-						// Prüfe, ob der Identifier der Name dieser Property ist
-						return; // Ja, es ist der Schlüssel, also ignorieren
-					}
-				}
-
-				// Versuche, die Definition dieses Identifiers aufzulösen
-				// Die Logik von resolveIdentifierAndGetCode ist gut dafür, aber wir wollen hier nur
-				// die Nebeneffekte (Füllen von this.importsToAddToContract und this.typesAndEnumsToDefineInContract).
-				// Der zurückgegebene 'code' ist hier nicht direkt relevant, da der Haupt-Schema-Code schon extrahiert wurde.
-				// Wichtig ist, dass resolveIdentifierAndGetCode die Definitionen sammelt.
-				// console.log(`Found internal identifier: ${identifierName} in schema. Attempting to resolve...`);
-				this.resolveIdentifierAndGetCode(
-					descendantNode,
-					descendantNode.getSourceFile() || sourceFileOfSchemaUsage,
+		const visit = (declKey: string) => {
+			if (!this.collectedDeclarationInfo.has(declKey)) {
+				return;
+			}
+			if (fullySorted.has(declKey)) return;
+			if (visitedForSort.has(declKey)) {
+				console.warn(
+					`WARN: Zyklische Abhängigkeit erkannt bei '${declKey}'. Contract könnte unvollständig sein.`,
 				);
+				return;
 			}
-			// Optional: PropertyAccessExpressions (z.B. MyEnums.Status) behandeln, wenn 'MyEnums' aufgelöst werden muss
-			else if (Node.isPropertyAccessExpression(descendantNode)) {
-				const expression = descendantNode.getExpression();
-				if (expression.getText() !== "z") {
-					// Ignoriere z.string, z.object etc. hier
-					// console.log(`Found internal property access: ${descendantNode.getText()}. Attempting to resolve base: ${expression.getText()}`);
-					this.resolveIdentifierAndGetCode(
-						expression,
-						expression.getSourceFile() || sourceFileOfSchemaUsage,
-					);
+
+			visitedForSort.add(declKey);
+			const dependencies = graph.get(declKey) || new Set();
+			for (const depKey of dependencies) {
+				if (depKey !== declKey) {
+					visit(depKey);
 				}
 			}
-		});
+			visitedForSort.delete(declKey);
+			fullySorted.add(declKey);
+			// biome-ignore lint/style/noNonNullAssertion: <explanation>
+			sortedCode.push(this.collectedDeclarationInfo.get(declKey)!.code);
+		};
+
+		for (const key of this.collectedDeclarationInfo.keys()) {
+			visit(key);
+		}
+		return sortedCode;
 	}
 
 	public async generateContract(): Promise<void> {
-		const sourceFiles = this.project.getSourceFiles();
+		this.collectedDeclarationInfo.clear();
+		this.visitedDeclarations.clear();
+		this.collectedExternalImports.clear();
 
-		this.typesAndEnumsToDefineInContract.clear();
-		this.importsToAddToContract.clear();
+		const sourceFiles = this.project.getSourceFiles();
 		const procedures: ExtractedProcedureInfo[] = [];
 
 		for (const sourceFile of sourceFiles) {
@@ -413,37 +568,24 @@ export class TrpcContractGenerator {
 						"outputType",
 					);
 
-					if (inputSchemaNode) {
-						this.collectDependenciesFromSchemaNode(
+					const inputTypeCode =
+						this.processSchemaNodeAndCollectDependencies(
 							inputSchemaNode,
 							sourceFile,
 						);
-					}
-					if (outputSchemaNode) {
-						this.collectDependenciesFromSchemaNode(
-							outputSchemaNode,
-							sourceFile,
-						);
-					}
-
-					const inputResolution = this.resolveIdentifierAndGetCode(
-						inputSchemaNode,
-						sourceFile,
-					);
-					const outputResolution = this.resolveIdentifierAndGetCode(
-						outputSchemaNode,
-						sourceFile,
-					);
-
-					const inputTypeCode = inputResolution
-						? inputResolution.code
-						: "z.undefined()";
-					const outputTypeCode = outputResolution
-						? outputResolution.code
+					const outputTypeCode = outputSchemaNode
+						? this.processSchemaNodeAndCollectDependencies(
+								outputSchemaNode,
+								sourceFile,
+							)
 						: undefined;
 
 					const generatedOutputPlaceholder =
-						this.generatePlaceholderFromZodNode(outputSchemaNode);
+						this.generatePlaceholderFromZodNode(
+							outputSchemaNode,
+							sourceFile,
+							0,
+						);
 
 					procedures.push({
 						procedureName,
@@ -457,42 +599,98 @@ export class TrpcContractGenerator {
 				}
 			}
 		}
-		this.writeContractFile(procedures);
+
+		const orderedLocalDeclarations = this.topologicallySortDeclarations();
+		this.writeContractFile(procedures, orderedLocalDeclarations);
 	}
 
 	private generatePlaceholderFromZodNode(
 		node: Node | undefined,
+		sourceFileContext: SourceFile,
 		depth = 0,
-		// @ts-ignore
 	): string {
-		if (!node || depth > 3) {
-			// Maximale Tiefe etwas reduziert, um bei komplexen Rekursionen sicher zu sein
+		if (!node || depth > 4) {
+			// Maximale Tiefe beibehalten oder anpassen
 			return `undefined /* ${!node ? "Kein Schema-Knoten für Placeholder" : "Maximale Rekursionstiefe erreicht"} */`;
 		}
 
+		// **NEU**: Behandlung für Identifier (potenziell lokale Schemas) an den Anfang stellen
+		if (Node.isIdentifier(node)) {
+			let actualDeclaration: Node | undefined;
+			const symbol = node.getSymbol();
+
+			if (symbol) {
+				const decls = symbol.getDeclarations();
+				if (decls && decls.length > 0) {
+					const firstDecl = decls[0];
+					if (Node.isImportSpecifier(firstDecl)) {
+						const importSpecifier = firstDecl;
+						const nameNodeSymbol = importSpecifier
+							.getNameNode()
+							.getSymbol();
+						if (nameNodeSymbol) {
+							const targetSymbol =
+								nameNodeSymbol.getAliasedSymbol() ??
+								nameNodeSymbol;
+							actualDeclaration =
+								targetSymbol.getDeclarations()[0];
+						}
+					} else {
+						actualDeclaration = firstDecl; // Direkte Deklaration
+					}
+				}
+			}
+
+			if (actualDeclaration) {
+				if (Node.isVariableDeclaration(actualDeclaration)) {
+					const initializer = actualDeclaration.getInitializer();
+					if (initializer) {
+						// Wichtig: sourceFileContext für den rekursiven Aufruf ist die Datei der tatsächlichen Deklaration
+						return this.generatePlaceholderFromZodNode(
+							initializer,
+							actualDeclaration.getSourceFile(),
+							depth + 1,
+						);
+					}
+				}
+				if (Node.isEnumDeclaration(actualDeclaration)) {
+					const firstMember = actualDeclaration.getMembers()[0];
+					if (firstMember) {
+						this.resolveAndCollectDependencies(
+							node,
+							sourceFileContext,
+						);
+						return `${actualDeclaration.getName()}.${firstMember.getName()}`;
+					}
+				}
+			}
+			// Wenn der Identifier nicht zu einem auflösbaren Schema (Variable mit Initializer) oder Enum führt,
+			// Fallback auf den generischen Placeholder für diesen Identifier.
+			const nodeText = node.getText().substring(0, 60);
+			// console.warn(`Placeholder: Konnte Identifier '${nodeText}' nicht zu bekanntem Schema auflösen. Fallback.`);
+			return `undefined /* Placeholder für: ${nodeText.replace(/\*\//g, "*\\/")}*/`;
+		}
+
 		if (Node.isCallExpression(node)) {
-			// z.B. z.string(), z.object({...})
-			const callee = node.getExpression(); // z.B. z.string, z.object, oder z.string().optional
+			const callee = node.getExpression();
 			const args = node.getArguments();
 
 			if (Node.isPropertyAccessExpression(callee)) {
-				const baseOfCalleeOrChainedMethod = callee.getExpression(); // z.B. 'z' oder 'z.string()'
-				const methodNameOrChainedName = callee.getName();
+				const baseOfCallee = callee.getExpression();
+				const methodName = callee.getName();
 
-				if (baseOfCalleeOrChainedMethod.getText() === "z") {
-					const directZodMethodName = methodNameOrChainedName;
-
-					switch (directZodMethodName) {
+				if (baseOfCallee.getText() === "z") {
+					switch (methodName) {
 						case "string":
 							return '"PLACEHOLDER_STRING"';
 						case "number":
 							return "0";
 						case "bigint":
-							return "0n"; // Korrekter BigInt-Literal Placeholder
+							return "0n";
 						case "boolean":
 							return "false";
 						case "date":
-							return `new Date("1970-01-01T00:00:00.000Z").toISOString()`; // Spezifischer ISO-String
+							return 'new Date("1970-01-01T00:00:00.000Z").toISOString()';
 						case "null":
 							return "null";
 						case "undefined":
@@ -505,7 +703,7 @@ export class TrpcContractGenerator {
 							return args[0]
 								? args[0].getText()
 								: "undefined /* Defektes z.literal */";
-						case "enum": // z.enum(['A', 'B'])
+						case "enum":
 							if (
 								args[0] &&
 								Node.isArrayLiteralExpression(args[0])
@@ -517,80 +715,60 @@ export class TrpcContractGenerator {
 							}
 							return '"PLACEHOLDER_ENUM"';
 						case "nativeEnum": {
-							const enumIdentifierNode = args[0]; // Der AST-Knoten für z.B. "TestNativeNumericEnum"
+							const enumIdentifierNode = args[0];
 							if (
 								enumIdentifierNode &&
 								Node.isIdentifier(enumIdentifierNode)
 							) {
-								const enumName = enumIdentifierNode.getText(); // z.B. "TestNativeNumericEnum"
-
-								// Die Enum-Definition wurde bereits an den Anfang der Datei kopiert
-								// und sollte im Scope der Placeholder-Funktion verfügbar sein.
-								// Wir versuchen, den Namen des ersten deklarierten Members zu finden.
-								const enumDefinitionString =
-									this.typesAndEnumsToDefineInContract.get(
-										enumName,
-									);
-								if (enumDefinitionString) {
-									// Einfache Regex, um den ersten Member-Namen zu finden.
-									// Beispiele:
-									// enum MyEnum { MEMBER_A = 1, ... } -> MEMBER_A
-									// enum MyEnum { MEMBER_A, ... } -> MEMBER_A
-									const firstMemberMatch =
-										enumDefinitionString.match(
-											// Sucht nach { optionalWhitespace MEMBER_NAME optionalWhitespace [optional = Wert] [optional Komma/}]
-											/{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:=[\s\S]*?)?[\s,}]/m,
+								const enumSymbol =
+									enumIdentifierNode.getSymbol();
+								const enumDeclarations =
+									enumSymbol?.getDeclarations();
+								if (
+									enumDeclarations?.[0] &&
+									Node.isEnumDeclaration(enumDeclarations[0])
+								) {
+									const enumDecl =
+										enumDeclarations[0] as EnumDeclaration;
+									const firstMember =
+										enumDecl.getMembers()[0];
+									if (firstMember) {
+										this.resolveAndCollectDependencies(
+											enumIdentifierNode,
+											sourceFileContext,
 										);
-									if (firstMemberMatch?.[1]) {
-										const firstMemberName =
-											firstMemberMatch[1];
-										// Generiere validen Code, der auf das Enum-Mitglied zugreift, z.B. "TestNativeNumericEnum.ADMIN"
-										return `${enumName}.${firstMemberName}`;
+										return `${enumDecl.getName()}.${firstMember.getName()}`;
 									}
 								}
-								// Fallback, wenn der Member-Name nicht extrahiert werden konnte.
-								// Dieser Fallback ist immer noch nicht perfekt für den *Wert*, aber das
-								// .output(z.nativeEnum(enumName)) im Contract stellt die Typsicherheit her.
-								// Der Fehler "Typ "0" kann dem Typ "TestNativeNumericEnum" nicht zugewiesen werden"
-								// bedeutet, der Placeholder-WERT muss ein gültiges Enum-Mitglied sein.
-								// Wenn TestNativeNumericEnum.ADMIN den Wert 1 hat, ist 1 ein gültiger Placeholder.
-								// Ohne die Enum-Struktur hier zur Laufzeit des Generators genau zu kennen,
-								// ist es schwierig, den *korrekten* ersten Wert (0, 1, oder einen String) zu garantieren.
-								// Die ${enumName}.${firstMemberName} Variante ist am robustesten.
-								// Wenn das fehlschlägt, ist ein informativer Kommentar + ein Cast oft das Beste für einen Placeholder.
-								console.warn(
-									`Konnte ersten Member für nativeEnum '${enumName}' nicht automatisch bestimmen. Der generierte Code für das .output() ist korrekt, aber der Placeholder-Rückgabewert könnte manuell angepasst werden müssen, um typsicher zu sein oder einen sinnvollen Default darzustellen. Verwende '${enumName}[Object.keys(${enumName})[0]]' als generischen Fallback.`,
+								const enumName = enumIdentifierNode.getText();
+								this.resolveAndCollectDependencies(
+									enumIdentifierNode,
+									sourceFileContext,
 								);
-								// Dieser Fallback versucht, den Wert des ersten Keys zu nehmen.
-								// Für numerische Enums gibt Object.keys() auch die numerischen Werte als Strings zurück,
-								// z.B. für enum E { A = 1 } -> Object.keys(E) ist ["1", "A"]. Der erste Key wäre "1". E["1"] ist "A".
-								// Für String-Enums enum E { A = "valA" } -> Object.keys(E) ist ["A"]. E["A"] ist "valA".
-								// Das ist also ein relativ guter, wenn auch komplex aussehender, Fallback für den Wert.
+								console.warn(
+									`WARN: Konnte ersten Member für nativeEnum '${enumName}' nicht sicher bestimmen. Placeholder ist '${enumName}[Object.keys(${enumName})[0]]'.`,
+								);
 								return `(${enumName} as any)[Object.keys(${enumName})[0]]`;
 							}
-							return "undefined /* Defektes z.nativeEnum für Placeholder oder Enum-Identifier nicht gefunden */";
+							return "undefined /* Defektes z.nativeEnum für Placeholder */";
 						}
 						case "object":
 							if (
 								args[0] &&
 								Node.isObjectLiteralExpression(args[0])
 							) {
-								const shape =
-									args[0] as ObjectLiteralExpression;
 								let objStr = "{";
-								const properties = shape.getProperties();
+								const properties = args[0].getProperties();
 								for (let i = 0; i < properties.length; i++) {
 									const prop = properties[i];
 									if (Node.isPropertyAssignment(prop)) {
-										const keyNode = prop.getNameNode();
-										// Schlüssel kann Identifier oder StringLiteral sein
-										const key = Node.isIdentifier(keyNode)
-											? keyNode.getText()
-											: // @ts-ignore
-												keyNode.getLiteralText();
+										const key = prop
+											.getNameNode()
+											.getText();
 										const valueSchemaNode =
 											prop.getInitializer();
-										objStr += ` "${key}": ${this.generatePlaceholderFromZodNode(valueSchemaNode, depth + 1)}`;
+										// Wichtig: sourceFileContext hier korrekt weitergeben
+										objStr += ` "${key}": ${this.generatePlaceholderFromZodNode(valueSchemaNode, sourceFileContext, depth + 1)}`;
 										if (i < properties.length - 1)
 											objStr += ",";
 									}
@@ -600,10 +778,6 @@ export class TrpcContractGenerator {
 							}
 							return "{ /* Defektes z.object für Placeholder */ }";
 						case "array":
-							// Für den Placeholder reicht oft ein leeres Array.
-							// Für mehr Typsicherheit (falls das Element nicht optional ist), könnte man ein Element generieren:
-							// const elementSchemaNode = args[0];
-							// return `[${this.generatePlaceholderFromZodNode(elementSchemaNode, depth + 1)}]`;
 							return "[]";
 						case "tuple":
 							if (
@@ -616,6 +790,7 @@ export class TrpcContractGenerator {
 									tupleStr +=
 										this.generatePlaceholderFromZodNode(
 											elements[i],
+											sourceFileContext,
 											depth + 1,
 										);
 									if (i < elements.length - 1)
@@ -626,142 +801,147 @@ export class TrpcContractGenerator {
 							}
 							return "[] /* Defektes z.tuple */";
 						case "union":
-						case "discriminatedUnion":
-							// Nimm die erste Option des Unions/DiscriminatedUnions für den Placeholder
+						case "discriminatedUnion": {
+							const optionsArrayNode =
+								methodName === "discriminatedUnion"
+									? args[1]
+									: args[0];
 							if (
-								args[0] &&
-								(Node.isArrayLiteralExpression(args[0]) ||
-									(directZodMethodName ===
-										"discriminatedUnion" &&
-										args[1] &&
-										Node.isArrayLiteralExpression(args[1])))
+								optionsArrayNode &&
+								Node.isArrayLiteralExpression(optionsArrayNode)
 							) {
-								const optionsArray = (
-									directZodMethodName === "discriminatedUnion"
-										? args[1]
-										: args[0]
-								) as Node;
-								if (
-									Node.isArrayLiteralExpression(optionsArray)
-								) {
-									const firstOptionSchema =
-										optionsArray.getElements()[0];
-									if (firstOptionSchema) {
-										return this.generatePlaceholderFromZodNode(
-											firstOptionSchema,
-											depth + 1,
-										);
-									}
+								const firstOptionSchema =
+									optionsArrayNode.getElements()[0];
+								if (firstOptionSchema) {
+									return this.generatePlaceholderFromZodNode(
+										firstOptionSchema,
+										sourceFileContext,
+										depth + 1,
+									);
 								}
 							}
 							return "undefined as any /* Komplexes z.union/z.discriminatedUnion */";
+						}
 						case "record":
-							// z.record(keySchema, valueSchema)
-							// Sicherster Placeholder ist ein leeres Objekt
 							return "{}";
 						case "lazy":
-							// Für z.lazy(() => schema), versuche, den Body der Funktion zu bekommen
 							if (args[0] && Node.isArrowFunction(args[0])) {
 								const body = args[0].getBody();
-								// Wenn Tiefe noch ok ist, rekursiv aufrufen, sonst undefined
 								return depth < 3
 									? this.generatePlaceholderFromZodNode(
 											body,
+											sourceFileContext,
 											depth + 1,
 										)
 									: "undefined /* Rekursionstiefe für z.lazy erreicht */";
 							}
 							return "undefined as any /* Komplexes z.lazy */";
-
-						// Effekte: Wir müssen den Typ *vor* dem Effekt für den Input des Effekts
-						// und den Typ *nach* dem Effekt für den Output des Placeholders betrachten.
-						// Da wir hier den Output-Placeholder generieren, ist der Typ *nach* dem Effekt relevant.
-						// Dies wird aber meist durch chained calls behandelt (siehe unten).
+						default:
+							break;
 					}
 				}
-				const chainedMethod = methodNameOrChainedName;
-				switch (chainedMethod) {
+
+				switch (methodName) {
 					case "optional":
 						return "undefined";
 					case "nullable":
 						return "null";
 					case "default":
-						// Für .default(value), könnten wir versuchen, 'value' zu extrahieren.
-						// Oder, einfacher für Placeholder, den Basistyp nehmen.
 						return this.generatePlaceholderFromZodNode(
-							baseOfCalleeOrChainedMethod,
+							baseOfCallee,
+							sourceFileContext,
 							depth + 1,
 						);
 					case "transform":
-					case "pipe": // pipe kann den Output-Typ ändern
-						// Für .transform(fn) oder .pipe(anotherSchema), ist der Output-Typ durch fn bzw. anotherSchema bestimmt.
-						// Dies ist schwer allein aus dem AST des *Inputs* zu `transform` zu bestimmen für den *Output-Placeholder*.
-						// ABER: Das `outputType` im Decorator ist ja bereits das *gesamte* Schema inkl. .transform().
-						// Wenn wir also `node` hier als das gesamte `z.something().transform(...)` haben,
-						// und `z.something()` nicht weiter aufgelöst wird, greift der Fallback.
-						// Eine bessere Lösung wäre, den Output-Typ des ZodEffects-Typs zu inspizieren, was ohne eval() schwer ist.
-						// Sicherster Fallback für den Placeholder-Wert:
+					case "pipe":
 						console.warn(
-							`Placeholder für Zod-Effekt '${chainedMethod}' wird zu 'undefined as any'. Das .output() im Vertrag ist aber korrekt.`,
+							`Placeholder für Zod-Effekt '${methodName}' wird zu 'undefined as any'. Das .output() im Vertrag ist aber korrekt.`,
 						);
 						return "undefined as any";
 					case "refine":
 					case "superRefine":
-						// .refine() ändert den Typ nicht, also den Placeholder des Basistyps verwenden.
 						return this.generatePlaceholderFromZodNode(
-							baseOfCalleeOrChainedMethod,
+							baseOfCallee,
+							sourceFileContext,
 							depth + 1,
 						);
+					default:
+						break;
 				}
 			}
-			// Fallback für nicht direkt behandelte oder komplexe Zod-Strukturen
 			const schemaText =
 				node?.getText().substring(0, 60) || "Unbekannter Knoten";
 			console.warn(
-				`Generiere generischen Placeholder für Zod AST Knoten: ${node?.getKindName()}, Text: ${schemaText}...`,
+				`Generiere generischen Placeholder für Zod CallExpression AST Knoten: ${node?.getKindName()}, Text: ${schemaText}...`,
 			);
 			return "undefined as any /* Komplexes/Unbekanntes Zod-Schema für Placeholder-Wert */";
 		}
+
+		// Fallback für Knoten, die keine Identifier oder CallExpressions sind (sollte selten sein für Schemas)
+		const nodeText =
+			node?.getText().substring(0, 60) || "Unbekannter Knoten";
+		// console.warn(`Generiere generischen Placeholder für AST Knoten (Typ: ${node?.getKindName()}): ${nodeText}`);
+		return `undefined /* Placeholder für: ${nodeText.replace(/\*\//g, "*\\/")}*/`;
 	}
 
-	private writeContractFile(procedures: ExtractedProcedureInfo[]): void {
-		// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-		let code = `// AUTOGENERATED FILE - DO NOT EDIT MANUALLY\n\n`;
-		code += `import { initTRPC, TRPCError } from '@trpc/server';\n`;
-		code += `import { z } from 'zod';\n`; // Zod wird für die inline Schemas benötigt
+	private writeContractFile(
+		procedures: ExtractedProcedureInfo[],
+		orderedLocalDeclarations: string[],
+	): void {
+		let code = "// AUTOGENERATED FILE - DO NOT EDIT MANUALLY\n\n";
+		code += "import { initTRPC, TRPCError } from '@trpc/server';\n";
+		code += "import { z } from 'zod';\n";
 		code += `import type { TRPCContext } from '${this.contractTrpcContextImportPath}';\n\n`;
 
-		this.typesAndEnumsToDefineInContract.forEach((c, name) => {
-			code += `${c}\n\n`;
-		});
-		this.importsToAddToContract.forEach((names, moduleSpecifier) => {
-			code += `import { ${[...names].join(", ")} } from '${moduleSpecifier}';\n`;
-		});
+		if (this.collectedExternalImports.size > 0) {
+			code += "// External Imports\n";
+			this.collectedExternalImports.forEach(
+				(details, moduleSpecifier) => {
+					const importParts: string[] = [];
+					if (details.defaultImport) {
+						importParts.push(details.defaultImport);
+					}
+					if (details.namespaceImport) {
+						importParts.push(`* as ${details.namespaceImport}`);
+					}
+					if (details.namedImports && details.namedImports.size > 0) {
+						importParts.push(
+							`{ ${[...details.namedImports].sort().join(", ")} }`,
+						);
+					}
 
-		// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-		code += `const t = initTRPC.context<TRPCContext>().create();\n\n`;
-		// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-		code += `export const publicProcedure = t.procedure;\n`;
-		// Der Contract-Placeholder für protectedProcedure. Die echte Logik ist im Backend.
-		// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-		code += `export const protectedProcedure = t.procedure.use(async (opts) => {\n`;
-		// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-		code += `  // This middleware is a placeholder for the generated contract.\n`;
-		// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-		code += `  // Actual authentication and authorization logic resides in the backend.\n`;
-		// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-		code += `  // It ensures that procedures marked as protected in the contract\n`;
-		// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-		code += `  // are recognizable as such by the tRPC client and type system.\n`;
-		code += `  if (!opts.ctx.user && opts.path !== 'healthcheck') { /* Example to allow healthcheck */ \n`;
-		code += `    // console.warn(\`[tRPC Contract] Protected procedure '\${opts.path}' called without user context.\`);\n`;
-		code += `    // throw new TRPCError({ code: 'UNAUTHORIZED' }); // Optional: make contract stricter\n`;
-		// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-		code += `  }\n`;
-		// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-		code += `  return opts.next({ ctx: opts.ctx });\n`;
-		// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-		code += `});\n\n`;
+					if (importParts.length > 0) {
+						code += `import ${importParts.join(", ")} from '${moduleSpecifier}';\n`;
+					} else {
+						code += `import '${moduleSpecifier}';\n`;
+					}
+				},
+			);
+			code += "\n";
+		}
+
+		if (orderedLocalDeclarations.length > 0) {
+			code += "// Local Dependencies (Types, Enums, Schemas)\n";
+			code += `${orderedLocalDeclarations.join("\n\n")}\n\n`;
+		}
+
+		code += "const t = initTRPC.context<TRPCContext>().create();\n\n";
+		code += "export const publicProcedure = t.procedure;\n";
+		code +=
+			"export const protectedProcedure = t.procedure.use(async (opts) => {\n";
+		code +=
+			"  // This middleware is a placeholder for the generated contract.\n";
+		code +=
+			"  // Actual authentication and authorization logic resides in the backend.\n";
+		code +=
+			"  if (!opts.ctx.user && opts.path !== 'healthcheck') { /* Example to allow healthcheck */ \n";
+		code +=
+			"    // console.warn(`[tRPC Contract] Protected procedure '${opts.path}' called without user context.`);\n";
+		code +=
+			"    // throw new TRPCError({ code: 'UNAUTHORIZED' }); // Optional: make contract stricter\n";
+		code += "  }\n";
+		code += "  return opts.next({ ctx: opts.ctx });\n";
+		code += "});\n\n";
 
 		const proceduresByDomain: Record<string, ExtractedProcedureInfo[]> = {};
 		// biome-ignore lint/complexity/noForEach: <explanation>
@@ -770,21 +950,20 @@ export class TrpcContractGenerator {
 			if (!proceduresByDomain[key]) proceduresByDomain[key] = [];
 			proceduresByDomain[key].push(p);
 		});
-		// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-		code += `export const appRouter = t.router({\n`;
+
+		code += "export const appRouter = t.router({\n";
 		for (const domain in proceduresByDomain) {
 			if (domain === "__ROOT__") {
 				// biome-ignore lint/complexity/noForEach: <explanation>
 				proceduresByDomain[domain].forEach((p) => {
 					code += `  ${p.procedureName}: ${p.isProtected ? "protectedProcedure" : "publicProcedure"}\n`;
-					code += `    .input(${p.inputTypeCode})\n`; // Direkte Verwendung des extrahierten Schema-Codes
+					code += `    .input(${p.inputTypeCode})\n`;
 					if (p.outputTypeCode) {
-						code += `    .output(${p.outputTypeCode})\n`; // Verwende den extrahierten Output-Schema-Code
+						code += `    .output(${p.outputTypeCode})\n`;
 					}
 					code += `    .${p.trpcType}(({ input, ctx }) => {\n`;
-					code += `      return ${p.generatedOutputPlaceholder};\n`; // HIER DIE ÄNDERUNG
-					// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-					code += `    }),\n`;
+					code += `      return ${p.generatedOutputPlaceholder};\n`;
+					code += "    }),\n";
 				});
 			} else {
 				code += `  ${domain}: t.router({\n`;
@@ -796,18 +975,14 @@ export class TrpcContractGenerator {
 						code += `      .output(${p.outputTypeCode})\n`;
 					}
 					code += `      .${p.trpcType}(({ input, ctx }) => {\n`;
-					code += `        return ${p.generatedOutputPlaceholder}\n`;
-					// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-					code += `      }),\n`;
+					code += `        return ${p.generatedOutputPlaceholder};\n`;
+					code += "      }),\n";
 				});
-				// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-				code += `  }),\n`;
+				code += "  }),\n";
 			}
 		}
-		// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-		code += `});\n\n`;
-		// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-		code += `export type AppRouter = typeof appRouter;\n`;
+		code += "});\n\n";
+		code += "export type AppRouter = typeof appRouter;\n";
 
 		fs.ensureDirSync(path.dirname(this.contractGeneratedRouterFile));
 		fs.writeFileSync(this.contractGeneratedRouterFile, code);

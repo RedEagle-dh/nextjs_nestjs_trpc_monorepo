@@ -3,6 +3,7 @@ import { Injectable } from "@nestjs/common";
 import { TRPCError } from "@trpc/server";
 import { TrpcProcedure, TrpcRouter } from "src/trpc/decorators";
 import { z } from "zod";
+import { finalSchema } from "./finalSchema";
 
 enum TestNativeNumericEnum {
 	ADMIN = 1,
@@ -34,6 +35,21 @@ export class UserTrpcRouter {
 		return {
 			status: "ok",
 			timestamp: new Date().toISOString(),
+		};
+	}
+
+	@TrpcProcedure({
+		type: "query",
+		isProtected: false,
+		inputType: finalSchema,
+		outputType: finalSchema,
+	})
+	async getFinalSchema() {
+		return {
+			test: {
+				id: "123",
+				name: "Test Name",
+			},
 		};
 	}
 
