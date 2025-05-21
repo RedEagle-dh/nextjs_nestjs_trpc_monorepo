@@ -53,8 +53,8 @@ export class TRPCService implements OnModuleInit {
 						const payload = this.authService.decodeToken(token);
 						user = {
 							id: payload.id,
-							username: payload.username,
-							picture: payload.picture,
+							username: payload.email,
+							picture: payload.email,
 						};
 					} catch (error) {
 						user = null;

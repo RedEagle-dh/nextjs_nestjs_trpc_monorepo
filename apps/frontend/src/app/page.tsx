@@ -1,27 +1,25 @@
 "use client";
-import { useTRPC, useTRPCClient } from "@/utils/trpc";
-import { useQuery } from "@tanstack/react-query";
+import { useTRPC } from "@/utils/trpc";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { signIn } from "next-auth/react";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
 export default function Home() {
 	const trpc = useTRPC();
-	const { data, isPending, isError, isSuccess, error } = useQuery(
-		trpc.user.getHealthcheck.queryOptions("Test"),
+
+	const mutation = useMutation(
+		trpc.user.protectedHealthcheck.mutationOptions(),
 	);
 
 	const [h, setH] = useState("");
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
 	useEffect(() => {
-		if (isSuccess) {
-			setH(data?.status);
-		} else if (isError) {
-			console.error(error);
-			setH("Error");
-		} else if (isPending) {
-			setH("Loading...");
-		}
-	}, [data, isSuccess, isError, isPending, error]);
+		mutation.mutate({
+			healthcheck: "test",
+		});
+	}, []);
 
 	return (
 		<div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
@@ -34,6 +32,17 @@ export default function Home() {
 					height={38}
 					priority
 				/>
+				<button
+					type="button"
+					onClick={() =>
+						signIn("credentials", {
+							email: "test@example.com",
+							password: "password",
+						})
+					}
+				>
+					Login
+				</button>
 				<ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
 					<li className="mb-2 tracking-[-.01em]">
 						Get started by editing{" "}

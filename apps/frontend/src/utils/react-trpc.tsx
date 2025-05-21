@@ -1,8 +1,9 @@
 "use client";
+import type { AppRouter } from "@mono/trpc-server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
+import { getSession } from "next-auth/react";
 import { useState } from "react";
-import type { AppRouter } from "../../../../packages/trpc/trpc-contract";
 import { TRPCProvider } from "./trpc";
 function makeQueryClient() {
 	return new QueryClient({
@@ -35,7 +36,21 @@ export function ReactTRPCProvider({ children }: { children: React.ReactNode }) {
 			links: [
 				httpBatchLink({
 					url: "http://localhost:3001/trpc",
-					headers: () => {
+					headers: async () => {
+						const baseHeaders: Record<string, string> = {
+							"Content-Type": "application/json",
+						};
+
+						if (typeof window !== "undefined") {
+							const session = await getSession();
+							if (session?.accessToken) {
+								return {
+									...baseHeaders,
+									Authorization: `Bearer ${session.accessToken}`,
+								};
+							}
+						}
+
 						return {
 							"Content-Type": "application/json",
 						};

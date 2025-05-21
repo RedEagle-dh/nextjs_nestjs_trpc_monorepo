@@ -4,6 +4,16 @@ import { initTRPC, TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import type { TRPCContext } from './server.ts';
 
+// Local Dependencies (Types, Enums, Schemas)
+const loginInputSchema = z.object({
+	email: z.string().email(),
+	password: z.string(),
+});
+
+const loginOutputSchema = z.object({
+	token: z.string(),
+});
+
 const t = initTRPC.context<TRPCContext>().create();
 
 export const publicProcedure = t.procedure;
@@ -18,6 +28,14 @@ export const protectedProcedure = t.procedure.use(async (opts) => {
 });
 
 export const appRouter = t.router({
+  auth: t.router({
+    login: publicProcedure
+      .input(loginInputSchema)
+      .output(loginOutputSchema)
+      .mutation(({ input, ctx }) => {
+        return { "token": "PLACEHOLDER_STRING" };
+      }),
+  }),
   user: t.router({
     getHealthcheck: publicProcedure
       .input(z.string())
@@ -26,6 +44,28 @@ export const appRouter = t.router({
 			timestamp: z.string(),
 		}))
       .query(({ input, ctx }) => {
+        return { "status": "PLACEHOLDER_STRING", "timestamp": "PLACEHOLDER_STRING" };
+      }),
+    mutateHealthcheck: publicProcedure
+      .input(z.object({
+			healthcheck: z.string(),
+		}))
+      .output(z.object({
+			status: z.string(),
+			timestamp: z.string(),
+		}))
+      .mutation(({ input, ctx }) => {
+        return { "status": "PLACEHOLDER_STRING", "timestamp": "PLACEHOLDER_STRING" };
+      }),
+    protectedHealthcheck: protectedProcedure
+      .input(z.object({
+			healthcheck: z.string(),
+		}))
+      .output(z.object({
+			status: z.string(),
+			timestamp: z.string(),
+		}))
+      .mutation(({ input, ctx }) => {
         return { "status": "PLACEHOLDER_STRING", "timestamp": "PLACEHOLDER_STRING" };
       }),
   }),

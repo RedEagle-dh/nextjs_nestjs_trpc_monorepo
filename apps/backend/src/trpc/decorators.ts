@@ -1,43 +1,46 @@
-import { ZodSchema, ZodTypeDef } from "zod";
+// Stelle sicher, dass der Pfad zu deinem TRPCContext korrekt ist!
+import type { TRPCContext } from "@mono/trpc-server/dist/server";
+// decorators.ts
+import { ZodSchema, ZodTypeDef, z } from "zod";
 
 export const TRPC_ROUTER_KEY = Symbol("TRPC_ROUTER_KEY");
 export const TRPC_PROCEDURE_KEY = Symbol("TRPC_PROCEDURE_KEY");
-export const TRPC_MIDDLEWARE_KEY = Symbol("TRPC_MIDDLEWARE_KEY");
+export const TRPC_MIDDLEWARE_KEY = Symbol("TRPC_MIDDLEWARE_KEY"); // Beibehalten, falls du es noch verwendest
 
-export interface TrpcProcedureMetadata {
-	path: string; // z.B. 'getById' oder 'user.getById' (wird vom Generator zusammengesetzt)
-	type: "query" | "mutation";
-	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-	inputType?: ZodSchema<any>;
-	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-	outputType?: ZodSchema<any>; // Optional, aber gut für den Generator
-	middlewares: TrpcMiddlewareDefinition[]; // Für benutzerdefinierte Middleware
-	isProtected: boolean; // Für Standard-Auth-Middleware
-}
-
-export interface TrpcProcedureOptions<
-	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-	TInput extends ZodSchema<any, ZodTypeDef, any> | undefined = undefined,
-	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-	TOutput extends ZodSchema<any, ZodTypeDef, any> | undefined = undefined,
-> {
-	inputType?: TInput;
-	outputType?: TOutput; // Für den Generator und Backend-Validierung
-	type: "query" | "mutation";
-	isProtected?: boolean; // Standard-Authentifizierung
-	middlewares?: TrpcMiddlewareDefinition[]; // Benutzerdefinierte Middleware
-}
-
+// TrpcRouterMetadata bleibt gleich
 export interface TrpcRouterMetadata {
-	domain?: string; // z.B. 'user', 'post'
-	// Später ggf. weitere Optionen
+	domain?: string;
 }
 
-// ----- Decorators -----
+// TrpcProcedureOptions mit klareren Generic-Namen
+export interface TrpcProcedureOptions<
+	TInputSchema extends ZodSchema | undefined = undefined,
+	TOutputSchema extends ZodSchema | undefined = undefined,
+> {
+	inputType?: TInputSchema;
+	outputType?: TOutputSchema;
+	type: "query" | "mutation";
+	isProtected?: boolean;
+	middlewares?: TrpcMiddlewareDefinition[]; // Beibehalten
+}
+
+// NEU: Helper-Typ für die Parameter der dekorierten Methode
+// Leitet den Typ des 'input'-Parameters aus dem Zod-Schema ab.
+export type TrpcProcedureInput<TInputSchema extends ZodSchema | undefined> =
+	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+	TInputSchema extends ZodSchema<infer T, any, any> ? T : undefined;
+// Wenn inputType nicht definiert ist, ist input 'undefined'.
+// Alternativ könntest du 'unknown' verwenden, wenn das für deinen Flow besser passt.
+
+export type TrpcProcedureParameters<
+	TInputSchema extends ZodSchema | undefined,
+> = {
+	ctx: TRPCContext;
+	input: TrpcProcedureInput<TInputSchema>;
+};
 
 /**
  * Kennzeichnet eine NestJS-Provider-Klasse als Quelle für tRPC-Router-Definitionen.
- * @param metadata Metadaten für den Router (z.B. Domain-Name)
  */
 export function TrpcRouter(metadata?: TrpcRouterMetadata): ClassDecorator {
 	return (target) => {
@@ -47,21 +50,13 @@ export function TrpcRouter(metadata?: TrpcRouterMetadata): ClassDecorator {
 
 /**
  * Kennzeichnet eine Methode innerhalb einer @TrpcRouter()-Klasse als tRPC-Prozedur.
- * @param opts Optionen wie Input-Schema, Output-Schema, Typ (query/mutation)
  */
 export function TrpcProcedure<
-	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-	TInput extends ZodSchema<any, ZodTypeDef, any> | undefined,
-	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-	TOutput extends ZodSchema<any, ZodTypeDef, any> | undefined,
->(optionsArgument: TrpcProcedureOptions<TInput, TOutput>): MethodDecorator {
-	// Umbenannt für Klarheit
-	console.log(
-		// biome-ignore lint/style/noUnusedTemplateLiteral: <explanation>
-		`@TrpcProcedure Decorator called for a method. Received options:`,
-		JSON.stringify(optionsArgument, null, 2), // Loggt das Argument des Decorators
-	);
-
+	TInputSchema extends ZodSchema | undefined, // Generic für inputType
+	TOutputSchema extends ZodSchema | undefined, // Generic für outputType
+>(
+	optionsArgument: TrpcProcedureOptions<TInputSchema, TOutputSchema>,
+): MethodDecorator {
 	return (
 		// biome-ignore lint/suspicious/noExplicitAny: <explanation>
 		target: any,
@@ -72,16 +67,10 @@ export function TrpcProcedure<
 			Reflect.getMetadata(TRPC_PROCEDURE_KEY, target.constructor) || [];
 
 		const procedureDefinitionToStore = {
-			// Das Objekt, das gespeichert wird
 			methodName: propertyKey,
-			options: optionsArgument, // << KORREKTUR HIER: Das gesamte 'optionsArgument'-Objekt wird unter dem Schlüssel 'options' gespeichert
-			implementation: descriptor.value,
+			options: optionsArgument, // Das gesamte options-Objekt speichern
+			implementation: descriptor.value, // Die ursprüngliche Methodenimplementierung
 		};
-
-		// Optional: Loggen, was genau gespeichert wird
-		// console.log(`Storing procedure definition for ${target.constructor.name}.${String(propertyKey)}:`,
-		//    JSON.stringify(procedureDefinitionToStore, (k,v) => typeof v === 'function' ? '[Function]' : (v instanceof ZodType ? '[ZodType]' : v) , 2)
-		// );
 
 		procedures.push(procedureDefinitionToStore);
 		Reflect.defineMetadata(
@@ -92,12 +81,8 @@ export function TrpcProcedure<
 	};
 }
 
-// ----- Middleware-Definition -----
-// Wir brauchen eine Möglichkeit, tRPC-Middleware-Funktionen zu referenzieren und
-// sie mit NestJS DI für ihre Abhängigkeiten zu versehen.
-
+// ----- Middleware-Definitionen (unverändert von deinem Code) -----
 export interface TrpcMiddlewareFunction {
-	// Die Signatur einer tRPC-Middleware
 	// biome-ignore lint/style/useShorthandFunctionType: <explanation>
 	(opts: {
 		// biome-ignore lint/suspicious/noExplicitAny: <explanation>
@@ -112,23 +97,17 @@ export interface TrpcMiddlewareFunction {
 	}): any;
 }
 
-// Definiert, wie eine Middleware im Decorator referenziert wird.
-// Entweder ein direkter Verweis auf eine Middleware-Funktion (einfach)
-// oder ein Verweis auf einen NestJS-Provider, der die Middleware-Logik enthält (komplexer für den Generator).
 export type TrpcMiddlewareDefinition =
-	| TrpcMiddlewareFunction // Direkte Funktion (einfach für den Generator, schwer mit DI)
+	| TrpcMiddlewareFunction
 	| {
 			// biome-ignore lint/complexity/noBannedTypes: <explanation>
-			provider: Function; // NestJS Provider-Klasse (z.B. RoleMiddlewareService)
-			methodName: string; // Methode auf dem Provider, die die tRPC-Middleware-Logik enthält
+			provider: Function;
+			methodName: string;
 			// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-			params?: any[]; // Optionale statische Parameter für die Middleware
+			params?: any[];
 	  };
 
-// Beispiel für eine direkt nutzbare tRPC Middleware (ohne NestJS DI für sich selbst)
-// Diese kann im @TrpcProcedure({ middlewares: [someTrpcMiddleware] }) verwendet werden.
 export const someTrpcMiddleware: TrpcMiddlewareFunction = ({ ctx, next }) => {
 	console.log("Executing someTrpcMiddleware");
-	// Hier könnte Logik stehen, die ctx modifiziert oder Fehler wirft
 	return next({ ctx });
 };

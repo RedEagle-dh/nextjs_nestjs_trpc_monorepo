@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { AuthService } from "src/auth/auth.service";
 import { UserTrpcRouter } from "src/healthcheck/healthcheck.trpc";
 import { AuthModule } from "../auth/auth.module";
 import { TRPCController } from "./trpc.controller";

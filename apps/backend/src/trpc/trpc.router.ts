@@ -1,9 +1,9 @@
-import { TRPCContext } from "@mono/trpc-server/dist/server";
-// src/trpc/trpc-main.router.ts (MVP-Implementierung)
-import { Injectable, OnModuleInit, Type } from "@nestjs/common";
+// src/trpc/trpc-main.router.ts (oder wo deine Factory liegt)
+import { TRPCContext } from "@mono/trpc-server/dist/server"; // Korrekten Pfad sicherstellen
+import { Injectable, OnModuleInit } from "@nestjs/common";
 import { ModuleRef, ModulesContainer } from "@nestjs/core";
 import { AnyRouter, TRPCError, initTRPC } from "@trpc/server";
-import { ZodType, z } from "zod"; // Zod importieren
+import { ZodType, z } from "zod";
 import {
 	TRPC_PROCEDURE_KEY,
 	TRPC_ROUTER_KEY,
@@ -11,6 +11,25 @@ import {
 } from "./decorators";
 
 const t = initTRPC.context<TRPCContext>().create();
+
+const isAuthenticated = t.middleware(async (opts) => {
+	// 'opts' statt 'otps'
+	if (!opts.ctx.user) {
+		throw new TRPCError({
+			code: "UNAUTHORIZED",
+			message: "You are not authenticated.",
+		});
+	}
+	return opts.next({
+		ctx: {
+			...opts.ctx,
+			user: opts.ctx.user,
+		},
+	});
+});
+
+export const publicProcedure = t.procedure;
+export const protectedProcedure = t.procedure.use(isAuthenticated);
 
 @Injectable()
 export class MainTrpcRouterFactory implements OnModuleInit {
@@ -63,7 +82,6 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 				) {
 					continue;
 				}
-
 				const routerMetadata = Reflect.getMetadata(
 					TRPC_ROUTER_KEY,
 					metatype,
@@ -87,9 +105,9 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 					const options =
 						procDefFromMeta.options as TrpcProcedureOptions<
 							// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-							ZodType<any, any, any>,
+							ZodType<any, any, any> | undefined, // Korrigiert, um undefined zu erlauben
 							// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-							ZodType<any, any, any>
+							ZodType<any, any, any> | undefined
 						>;
 					const implementation =
 						// biome-ignore lint/complexity/noBannedTypes: <explanation>
@@ -100,15 +118,8 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 					}
 
 					let procedureBuilder = options.isProtected
-						? t.procedure.use(async (opts) => {
-								if (!opts.ctx.user) {
-									throw new TRPCError({
-										code: "UNAUTHORIZED",
-									});
-								}
-								return opts.next({ ctx: opts.ctx });
-							})
-						: t.procedure;
+						? protectedProcedure
+						: publicProcedure;
 
 					if (options.inputType) {
 						procedureBuilder = procedureBuilder.input(
@@ -123,28 +134,20 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 
 					const boundImplementation =
 						implementation.bind(routerInstance);
-					const resolver = async (opts: {
-						// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-						input: any;
+
+					const resolver = async (procedureHandlerOpts: {
+						input: unknown;
 						ctx: TRPCContext;
-						// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-						meta?: any;
+						meta?: unknown;
 					}) => {
 						try {
-							if (boundImplementation.length === 0)
-								return await boundImplementation();
-							if (boundImplementation.length === 1)
-								return await boundImplementation(opts.input);
-							return await boundImplementation(
-								opts.input,
-								opts.ctx,
-							);
+							return await boundImplementation({
+								input: procedureHandlerOpts.input,
+								ctx: procedureHandlerOpts.ctx,
+							});
 						} catch (error) {
 							if (error instanceof TRPCError) throw error;
-							const procedurePath = `${
-								// biome-ignore lint/style/useTemplate: <explanation>
-								domainKey !== "__ROOT__" ? domainKey + "." : ""
-							}${methodName}`;
+							const procedurePath = `${domainKey !== "__ROOT__" ? `${domainKey}.` : ""}${methodName}`;
 							console.error(
 								`Error in tRPC procedure ${procedurePath}:`,
 								error,
@@ -178,8 +181,8 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 			}
 		}
 
-		const finalRouterDefinition = {};
-
+		// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+		const finalRouterDefinition: Record<string, any> = {};
 		for (const domainKey in proceduresToBuildGrouped) {
 			const proceduresInDomain = proceduresToBuildGrouped[domainKey];
 			if (Object.keys(proceduresInDomain).length === 0) {
@@ -202,14 +205,12 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 		}
 		if (
 			Object.keys(finalRouterDefinition).length === 0 &&
-			// biome-ignore lint/complexity/useLiteralKeys: <explanation>
-			Object.keys(proceduresToBuildGrouped["__ROOT__"] || {}).length === 0
+			Object.keys(proceduresToBuildGrouped.__ROOT__ || {}).length === 0
 		) {
 			console.warn(
 				"No root procedures or domain routers were built. The appRouter will be empty.",
 			);
 		}
-
 		return t.router(finalRouterDefinition);
 	}
 }

@@ -3,14 +3,14 @@
 	"private": true,
 	"scripts": {
 		"build": "turbo run build",
-		"dev": "turbo run dev start:dev",
+		"dev": "turbo run migrate dev start:dev",
 		"lint": "turbo run lint",
 		"format": "prettier --write \"**/*.{ts,tsx,md}\"",
 		"check-types": "turbo run check-types",
-		"generate": "turbo run generate"
+		"generate": "turbo run generate",
+		"migrate": "turbo run migrate"
 	},
 	"devDependencies": {
-		"prettier": "^3.5.3",
 		"turbo": "^2.5.3",
 		"typescript": "^5.8.3"
 	},
