@@ -6,6 +6,7 @@ import { AuthModule } from "./auth/auth.module";
 import { AuthService } from "./auth/auth.service";
 import { DbModule } from "./db/db.module";
 import { TRPCModule } from "./trpc/trpc.module";
+import { RedisModule } from './redis/redis.module';
 
 @Module({
 	imports: [
@@ -16,6 +17,7 @@ import { TRPCModule } from "./trpc/trpc.module";
 		TRPCModule,
 		AuthModule,
 		DbModule,
+		RedisModule,
 	],
 	controllers: [AppController],
 	providers: [AppService],

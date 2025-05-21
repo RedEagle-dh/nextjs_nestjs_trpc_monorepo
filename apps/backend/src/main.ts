@@ -1,8 +1,10 @@
 import { NestFactory } from "@nestjs/core";
+import { json } from "express";
 import { AppModule } from "./app.module";
 
 async function bootstrap() {
 	const app = await NestFactory.create(AppModule);
+	app.use(json({ limit: "5mb" }));
 	app.enableCors({
 		origin: true, // Für die Entwicklung true setzen oder spezifische Origins erlauben
 		// z.B. 'http://localhost:DEIN_FRONTEND_PORT' (wenn Frontend auf anderem Port läuft)

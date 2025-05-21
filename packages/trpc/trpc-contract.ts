@@ -10,8 +10,19 @@ const loginInputSchema = z.object({
 	password: z.string(),
 });
 
-const loginOutputSchema = z.object({
-	token: z.string(),
+const tokenOutputSchema = z.object({
+	user: z.object({
+		id: z.string(),
+		email: z.string(),
+		name: z.string(),
+	}),
+	accessToken: z.string(),
+	refreshToken: z.string(),
+	accessTokenExpiresAt: z.number(),
+});
+
+const refreshTokenInputSchema = z.object({
+	refreshToken: z.string(),
 });
 
 const t = initTRPC.context<TRPCContext>().create();
@@ -31,13 +42,19 @@ export const appRouter = t.router({
   auth: t.router({
     login: publicProcedure
       .input(loginInputSchema)
-      .output(loginOutputSchema)
+      .output(tokenOutputSchema)
       .mutation(({ input, ctx }) => {
-        return { "token": "PLACEHOLDER_STRING" };
+        return { "user": { "id": "PLACEHOLDER_STRING", "email": "PLACEHOLDER_STRING", "name": "PLACEHOLDER_STRING" }, "accessToken": "PLACEHOLDER_STRING", "refreshToken": "PLACEHOLDER_STRING", "accessTokenExpiresAt": 0 };
+      }),
+    refreshToken: publicProcedure
+      .input(refreshTokenInputSchema)
+      .output(tokenOutputSchema)
+      .mutation(({ input, ctx }) => {
+        return { "user": { "id": "PLACEHOLDER_STRING", "email": "PLACEHOLDER_STRING", "name": "PLACEHOLDER_STRING" }, "accessToken": "PLACEHOLDER_STRING", "refreshToken": "PLACEHOLDER_STRING", "accessTokenExpiresAt": 0 };
       }),
   }),
   user: t.router({
-    getHealthcheck: publicProcedure
+    getHealthcheck: protectedProcedure
       .input(z.string())
       .output(z.object({
 			status: z.string(),

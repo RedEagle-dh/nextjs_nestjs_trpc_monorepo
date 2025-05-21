@@ -17,14 +17,15 @@
 		"generate:trpc-contract": "tsx ./src/generator/run.ts"
 	},
 	"dependencies": {
-		"@mono/trpc-server": "workspace:*",
 		"@mono/prisma": "workspace:*",
+		"@mono/trpc-server": "workspace:*",
 		"@nestjs/common": "^11.1.1",
 		"@nestjs/config": "^4.0.2",
 		"@nestjs/core": "^11.1.1",
 		"@nestjs/platform-express": "^11.1.1",
 		"@swc/helpers": "^0.5.17",
 		"@trpc/server": "^11.1.2",
+		"ioredis": "^5.6.1",
 		"jsonwebtoken": "^9.0.2",
 		"reflect-metadata": "^0.2.2",
 		"rxjs": "^7.8.2",
@@ -56,13 +57,19 @@
 		"typescript-eslint": "^8.32.1"
 	},
 	"jest": {
-		"moduleFileExtensions": ["js", "json", "ts"],
+		"moduleFileExtensions": [
+			"js",
+			"json",
+			"ts"
+		],
 		"rootDir": "src",
 		"testRegex": ".*\\.spec\\.ts$",
 		"transform": {
 			"^.+\\.(t|j)s$": "ts-jest"
 		},
-		"collectCoverageFrom": ["**/*.(t|j)s"],
+		"collectCoverageFrom": [
+			"**/*.(t|j)s"
+		],
 		"coverageDirectory": "../coverage",
 		"testEnvironment": "node"
 	}

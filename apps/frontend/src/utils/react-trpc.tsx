@@ -2,9 +2,10 @@
 import type { AppRouter } from "@mono/trpc-server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
-import { getSession } from "next-auth/react";
+import { getSession, useSession } from "next-auth/react";
 import { useState } from "react";
 import { TRPCProvider } from "./trpc";
+
 function makeQueryClient() {
 	return new QueryClient({
 		defaultOptions: {
@@ -16,7 +17,9 @@ function makeQueryClient() {
 		},
 	});
 }
+
 let browserQueryClient: QueryClient | undefined = undefined;
+
 function getQueryClient() {
 	if (typeof window === "undefined") {
 		// Server: always make a new query client
@@ -29,6 +32,7 @@ function getQueryClient() {
 	if (!browserQueryClient) browserQueryClient = makeQueryClient();
 	return browserQueryClient;
 }
+
 export function ReactTRPCProvider({ children }: { children: React.ReactNode }) {
 	const queryClient = getQueryClient();
 	const [trpcClient] = useState(() =>

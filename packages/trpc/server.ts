@@ -6,6 +6,5 @@ export type TRPCContext = {
 	user?: {
 		id: string;
 		username: string;
-		picture: string;
 	} | null;
 };

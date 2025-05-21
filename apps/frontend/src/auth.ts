@@ -1,8 +1,16 @@
-import NextAuth from "next-auth";
+// auth.ts
+import NextAuth, {
+	type User as NextAuthUser,
+	type NextAuthConfig,
+	type Session,
+	type DefaultSession,
+} from "next-auth"; // Session und DefaultSession importieren
 import Credentials from "next-auth/providers/credentials";
-import { TRPCClientError, serverTrpcClient } from "./utils/server-trpc";
+import { TRPCClientError, serverTrpcClient } from "./utils/server-trpc"; // Pfad anpassen!
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+const TOKEN_REFRESH_BUFFER_SECONDS = 60;
+
+export const config: NextAuthConfig = {
 	providers: [
 		Credentials({
 			name: "Credentials",
@@ -14,25 +22,22 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 				},
 				password: { label: "Password", type: "password" },
 			},
-			async authorize(credentials) {
-				if (
-					!credentials ||
-					typeof credentials.email !== "string" ||
-					credentials.email.trim() === "" ||
-					typeof credentials.password !== "string" ||
-					credentials.password.trim() === ""
-					// Du könntest hier noch credentials.csrfToken prüfen, falls du es verwendest
-				) {
-					console.error(
-						"Auth.js/authorize: Gültige E-Mail und Passwort sind erforderlich.",
-					);
-					// throw new Error("Gültige E-Mail und Passwort sind erforderlich."); // Führt zu Fehlerseite
-					return null; // Signalisiert Login-Fehler
-				}
+			async authorize(credentials): Promise<NextAuthUser | null> {
+				const typedCredentials = credentials as {
+					email?: string;
+					password?: string;
+				};
+				const { email, password } = typedCredentials;
 
-				const { email, password } = credentials;
-				if (!email || !password) {
-					throw new Error("Email and password are required");
+				if (
+					!email ||
+					email.trim() === "" ||
+					!password ||
+					password.trim() === ""
+				) {
+					throw new Error(
+						"Email und Passwort sind erforderlich und dürfen nicht leer sein.",
+					);
 				}
 
 				try {
@@ -42,17 +47,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 							password: password,
 						});
 
-					if (loginResult?.token) {
+					if (
+						loginResult.accessToken &&
+						loginResult.refreshToken &&
+						loginResult.user &&
+						typeof loginResult.accessTokenExpiresAt === "number"
+					) {
 						return {
-							// Dieses Objekt wird an den 'jwt'-Callback weitergegeben
-							id: "1",
-							name: "Max Mustermann",
-							email: email,
-							accessToken: loginResult.token, // Dein Backend-Token
+							id: loginResult.user.id,
+							email: loginResult.user.email,
+							name: loginResult.user.name,
+							accessToken: loginResult.accessToken,
+							refreshToken: loginResult.refreshToken,
+							accessTokenExpiresAt:
+								loginResult.accessTokenExpiresAt,
 						};
 					}
 					console.error(
-						"Auth.js/authorize: Unerwartete oder unvollständige Antwort von tRPC Login-Mutation:",
+						"Auth.js/authorize: Unvollständige Antwort von tRPC Login (fehlende Token-Daten):",
 						loginResult,
 					);
 					return null;
@@ -62,9 +74,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 						error,
 					);
 					if (error instanceof TRPCClientError) {
-						// Hier könntest du spezifische tRPC-Fehlercodes behandeln
-						// z.B. wenn dein Backend bei falschen Credentials einen 'UNAUTHORIZED'-Fehler wirft.
-						// In den meisten Fällen führt das aber auch einfach zu 'return null;'.
 						console.log(
 							"TRPC Error Code:",
 							error.data?.code,
@@ -72,7 +81,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 							error.message,
 						);
 					}
-					return null; // Signalisiert Login-Fehler
+					return null;
 				}
 			},
 		}),
@@ -81,27 +90,113 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 		strategy: "jwt",
 	},
 	callbacks: {
-		async jwt({ token, user, account, profile }) {
-			if (user) {
-				// @ts-ignore
-				token.accessToken = user.accessToken;
-				token.userId = user.id;
+		async jwt({ token, user, account }) {
+			// Initialer Login
+			if (account && user) {
+				return {
+					userId: user.id,
+					email: user.email,
+					name: user.name,
+					accessToken: user.accessToken,
+					refreshToken: user.refreshToken,
+					accessTokenExpiresAt: user.accessTokenExpiresAt,
+				};
 			}
-			return token;
+
+			// Token noch gültig?
+			if (
+				token.accessTokenExpiresAt &&
+				Date.now() / 1000 <
+					token.accessTokenExpiresAt - TOKEN_REFRESH_BUFFER_SECONDS
+			) {
+				return token;
+			}
+
+			// Refresh Token fehlt? -> Fehler
+			if (!token.refreshToken) {
+				return { ...token, error: "RefreshAccessTokenError" };
+			}
+
+			// Versuche Refresh
+			try {
+				const refreshedTokens =
+					await serverTrpcClient.auth.refreshToken.mutate({
+						refreshToken: token.refreshToken,
+					});
+				return {
+					...token,
+					accessToken: refreshedTokens.accessToken,
+					accessTokenExpiresAt: refreshedTokens.accessTokenExpiresAt,
+					refreshToken:
+						refreshedTokens.refreshToken ?? token.refreshToken,
+					error: undefined, // Fehler zurücksetzen
+				};
+			} catch (error) {
+				console.error(
+					"Auth.js/jwt: Error refreshing access token:",
+					error,
+				);
+				return {
+					...token,
+					accessToken: undefined,
+					accessTokenExpiresAt: undefined,
+					// Optional: refreshToken auch entfernen, wenn er als ungültig betrachtet wird
+					// refreshToken: undefined,
+					error: "RefreshAccessTokenError",
+				};
+			}
 		},
-		async session({ session, token }) {
+		async session({ session: originalSessionInput, token }) {
+			// Baue das neue Session-Objekt für den Client auf.
+			// 'token' ist hier die maßgebliche Quelle nach dem jwt-Callback.
+			// 'originalSessionInput' liefert 'expires' und ggf. eine Basis-User-Struktur von NextAuth.
+
+			const newSession: Session = {
+				// Typisiere mit deinem erweiterten Session-Typ
+				expires: originalSessionInput.expires, // Wichtig: von NextAuth bereitgestellt
+				// Initialisiere optionale Felder als undefined oder basierend auf dem Token
+				user: undefined,
+				accessToken: undefined,
+				error: undefined,
+			};
+
+			if (token.userId) {
+				newSession.user = {
+					// Behalte Standardfelder von originalSessionInput.user bei, falls vorhanden und gewünscht
+					name: token.name ?? originalSessionInput.user?.name ?? null,
+					email:
+						token.email ?? originalSessionInput.user?.email ?? null,
+					image: originalSessionInput.user?.image ?? null,
+					// Überschreibe/Setze die ID aus dem Token
+					id: token.userId,
+				};
+			} else if (originalSessionInput.user) {
+				// Falls kein userId im Token, aber die ursprüngliche Session hatte einen User
+				// (z.B. für anonyme Sessions, falls du so etwas hättest)
+				newSession.user = originalSessionInput.user;
+			}
+			// Wenn weder token.userId noch originalSessionInput.user existiert, bleibt newSession.user undefined.
+
 			if (token.accessToken) {
-				session.accessToken = token.accessToken as string;
+				newSession.accessToken = token.accessToken;
 			}
-			if (token.userId && session.user) {
-				session.user.id = token.userId as string;
+			// Wenn token.accessToken undefined ist (z.B. nach Refresh-Fehler), bleibt newSession.accessToken undefined.
+
+			if (token.error) {
+				newSession.error = token.error;
 			}
-			return session;
+			// Wenn token.error undefined ist, bleibt newSession.error undefined.
+
+			return newSession;
 		},
 	},
 	pages: {
 		signIn: "/auth/login",
+		error: "/",
 	},
 	secret: process.env.AUTH_SECRET,
-	trustHost: true,
-});
+	trustHost: process.env.NODE_ENV !== "production",
+	debug: process.env.NODE_ENV === "development",
+};
+
+export const { handlers, signIn, signOut, auth } = NextAuth(config);

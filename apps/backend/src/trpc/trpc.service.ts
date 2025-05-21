@@ -50,11 +50,12 @@ export class TRPCService implements OnModuleInit {
 				if (authHeader?.startsWith("Bearer ")) {
 					const token = authHeader.substring(7);
 					try {
-						const payload = this.authService.decodeToken(token);
+						const payload =
+							this.authService.decodeAccessToken(token);
+						console.log(payload);
 						user = {
-							id: payload.id,
+							id: payload.userId,
 							username: payload.email,
-							picture: payload.email,
 						};
 					} catch (error) {
 						user = null;

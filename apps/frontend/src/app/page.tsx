@@ -1,25 +1,36 @@
 "use client";
 import { useTRPC } from "@/utils/trpc";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { signIn } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
 export default function Home() {
 	const trpc = useTRPC();
+	const { data: session } = useSession();
 
 	const mutation = useMutation(
 		trpc.user.protectedHealthcheck.mutationOptions(),
 	);
 
+	const mut = useMutation(trpc.user.mutateHealthcheck.mutationOptions());
+
+	const { data } = useQuery(trpc.user.getHealthcheck.queryOptions("Test"));
+
 	const [h, setH] = useState("");
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
 	useEffect(() => {
-		mutation.mutate({
+		/* mutation.mutate({
 			healthcheck: "test",
-		});
-	}, []);
+		}); */
+
+		/* mut.mutate({
+			healthcheck: "test",
+		}); */
+
+		console.log(data);
+	}, [data]);
 
 	return (
 		<div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
@@ -43,6 +54,7 @@ export default function Home() {
 				>
 					Login
 				</button>
+				{session?.user.name}
 				<ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
 					<li className="mb-2 tracking-[-.01em]">
 						Get started by editing{" "}
