@@ -529,9 +529,9 @@ export class TrpcContractGenerator {
 					)
 						continue;
 
-					const typeProperty = procDecoratorArg.getProperty(
-						"type",
-					) as PropertyAssignment | undefined;
+					const typeProperty = procDecoratorArg.getProperty("type") as
+						| PropertyAssignment
+						| undefined;
 					const isProtectedProperty = procDecoratorArg.getProperty(
 						"isProtected",
 					) as PropertyAssignment | undefined;

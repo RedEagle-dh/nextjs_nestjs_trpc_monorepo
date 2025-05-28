@@ -1,9 +1,9 @@
 {
-  "eslint.workingDirectories": [
-    {
-      "mode": "auto"
-    }
-  ],
-  "editor.formatOnSave": true,
-  "editor.defaultFormatter": "biomejs.biome"
+	"eslint.workingDirectories": [
+		{
+			"mode": "auto"
+		}
+	],
+	"editor.formatOnSave": true,
+	"editor.defaultFormatter": "biomejs.biome"
 }

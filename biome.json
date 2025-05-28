@@ -7,14 +7,31 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"ignore": []
+		"ignore": [
+			"node_modules/",
+			"dist/",
+			"build/",
+			".turbo/",
+			".next/",
+			".git/",
+			"**/generated/**"
+		]
 	},
 	"formatter": {
 		"enabled": true,
 		"indentStyle": "tab",
 		"indentWidth": 4,
 		"bracketSpacing": true,
-		"lineEnding": "lf"
+		"lineEnding": "lf",
+		"ignore": [
+			"**/node_modules/**",
+			"**/dist/**",
+			"**/build/**",
+			"**/.turbo/**",
+			"**/.next/**",
+			"**/.git/**",
+			"**/generated/**"
+		]
 	},
 	"organizeImports": {
 		"enabled": true
@@ -28,7 +45,16 @@
 					"level": "off"
 				}
 			}
-		}
+		},
+		"ignore": [
+			"**/node_modules/**",
+			"**/dist/**",
+			"**/build/**",
+			"**/.turbo/**",
+			"**/.next/**",
+			"**/.git/**",
+			"**/generated/**"
+		]
 	},
 	"javascript": {
 		"formatter": {

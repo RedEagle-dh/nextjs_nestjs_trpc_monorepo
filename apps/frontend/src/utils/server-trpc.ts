@@ -1,5 +1,5 @@
 "use server";
-import { auth } from "@/auth";
+import { auth, signOut } from "@/auth";
 import { AppRouter } from "@mono/trpc-source/index";
 import {
 	TRPCLink,
@@ -9,8 +9,6 @@ import {
 } from "@trpc/client";
 import { TRPCClientError } from "@trpc/client";
 import { observable } from "@trpc/server/observable";
-import { signOut } from "next-auth/react";
-import { redirect } from "next/navigation";
 
 const trpcApiUrl =
 	process.env.NEXT_PUBLIC_TRPC_API_URL || "http://localhost:3001/trpc";
@@ -27,7 +25,6 @@ const errorHandlingLink: TRPCLink<AppRouter> = () => {
 
 					if (error.data?.code === "UNAUTHORIZED") {
 						console.log("Handling unauthorized error");
-						signOut();
 
 						observer.next({
 							result: { data: { type: "unauthorized_handled" } },

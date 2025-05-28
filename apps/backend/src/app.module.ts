@@ -5,8 +5,8 @@ import { AppService } from "./app.service";
 import { AuthModule } from "./auth/auth.module";
 import { AuthService } from "./auth/auth.service";
 import { DbModule } from "./db/db.module";
+import { RedisModule } from "./redis/redis.module";
 import { TRPCModule } from "./trpc/trpc.module";
-import { RedisModule } from './redis/redis.module';
 
 @Module({
 	imports: [
