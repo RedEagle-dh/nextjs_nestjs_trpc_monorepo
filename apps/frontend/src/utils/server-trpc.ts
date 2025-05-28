@@ -75,7 +75,6 @@ export const serverTrpcClient = createTRPCClient<AppRouter>({
 				const baseHeaders: Record<string, string> = {};
 
 				const session = await auth();
-				console.log("Session server trpc: ", session);
 				if (session?.accessToken) {
 					baseHeaders.Authorization = `Bearer ${session.accessToken}`;
 				}

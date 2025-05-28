@@ -49,8 +49,6 @@ export class TRPCService implements OnModuleInit {
 
 				if (authHeader?.startsWith("Bearer ")) {
 					const token = authHeader.substring(7);
-					console.log(authHeader);
-					console.log(token);
 					try {
 						const payload =
 							await this.authService.decodeAccessToken(token);

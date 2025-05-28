@@ -108,6 +108,5 @@ export type TrpcMiddlewareDefinition =
 	  };
 
 export const someTrpcMiddleware: TrpcMiddlewareFunction = ({ ctx, next }) => {
-	console.log("Executing someTrpcMiddleware");
 	return next({ ctx });
 };
