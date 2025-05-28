@@ -40,31 +40,38 @@ export class TRPCService implements OnModuleInit {
 
 		this.httpHandler = createHTTPHandler({
 			router: this.actualAppRouter,
-			createContext: ({
+			createContext: async ({
 				req,
 				res,
-			}: CreateHTTPContextOptions): TRPCContext => {
+			}: CreateHTTPContextOptions): Promise<TRPCContext> => {
 				const authHeader = req.headers.authorization;
-				let user: TRPCContext["user"] = null;
+				let session: TRPCContext["session"] | null;
 
 				if (authHeader?.startsWith("Bearer ")) {
 					const token = authHeader.substring(7);
+					console.log(authHeader);
+					console.log(token);
 					try {
 						const payload =
-							this.authService.decodeAccessToken(token);
-						console.log(payload);
-						user = {
-							id: payload.userId,
-							username: payload.email,
+							await this.authService.decodeAccessToken(token);
+						session = {
+							user: {
+								id: payload.userId,
+								username: payload.email,
+								email: payload.email,
+								role: payload.role,
+							},
+							accessToken: token,
 						};
 					} catch (error) {
-						user = null;
+						session = null;
 					}
 				}
 				// @ts-ignore
-				return { req, res, user };
+				return { req, res, session };
 			},
 			onError: ({ error, path, type, input, ctx }) => {
+				console.log(ctx);
 				console.error(
 					`tRPC Error in TRPCService (executing actual router) - Path: ${path}, Type: ${type}, Input: ${JSON.stringify(input)}, Error: ${error.message}`,
 				);

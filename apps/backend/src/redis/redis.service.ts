@@ -35,6 +35,30 @@ export class RedisService implements OnModuleDestroy, OnModuleInit {
 		}
 	}
 
+	async scan(pattern: string, count?: number): Promise<string[]> {
+		try {
+			const keys: string[] = [];
+			let cursor = "0";
+
+			do {
+				const [nextCursor, batchKeys] = await this.redisClient.scan(
+					cursor,
+					"MATCH",
+					pattern,
+					"COUNT",
+					count || 100,
+				);
+				cursor = nextCursor;
+				keys.push(...batchKeys);
+			} while (cursor !== "0");
+
+			return keys;
+		} catch (error) {
+			console.error(`Redis SCAN error for pattern ${pattern}:`, error);
+			throw error;
+		}
+	}
+
 	/**
 	 * Setzt einen Wert für einen Schlüssel.
 	 * Verwendet die Array-Syntax für optionale Argumente für bessere Kompatibilität mit ioredis-Überladungen.

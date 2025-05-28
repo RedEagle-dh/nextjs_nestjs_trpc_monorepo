@@ -1,9 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import {
-	TrpcProcedure,
-	TrpcProcedureParameters,
-	TrpcRouter,
-} from "src/trpc/decorators";
+import { TrpcProcedure, TrpcRouter } from "src/trpc/decorators";
 import { z } from "zod";
 @Injectable()
 @TrpcRouter({ domain: "user" })
@@ -18,9 +14,6 @@ export class UserTrpcRouter {
 		isProtected: true,
 	})
 	async getHealthcheck() {
-		console.log(
-			"tRPC contract placeholder for 'user.getHealthcheck' called.",
-		);
 		return {
 			status: "ok",
 			timestamp: new Date().toISOString(),
@@ -39,9 +32,6 @@ export class UserTrpcRouter {
 		}),
 	})
 	async mutateHealthcheck() {
-		console.log(
-			"tRPC contract placeholder for 'user.mutateHealthcheck' called.",
-		);
 		return {
 			status: "ok",
 			timestamp: new Date().toISOString(),
@@ -59,10 +49,7 @@ export class UserTrpcRouter {
 			timestamp: z.string(),
 		}),
 	})
-	async protectedHealthcheck({ ctx, input }) {
-		console.log(
-			"tRPC contract placeholder for 'user.protectedHealthcheck' called.",
-		);
+	async protectedHealthcheck(props) {
 		return {
 			status: "ok",
 			timestamp: new Date().toISOString(),

@@ -8,6 +8,7 @@ declare module "next-auth" {
 			id?: string;
 			email?: string | null;
 			name?: string | null;
+			role?: string;
 		} & DefaultSession["user"];
 		error?: "RefreshAccessTokenError";
 	}
@@ -19,11 +20,18 @@ declare module "next-auth" {
 		accessToken: string;
 		refreshToken: string;
 		accessTokenExpiresAt: number;
+		role?: string;
 	}
 }
 
 declare module "next-auth/jwt" {
 	interface JWT {
+		user?: {
+			id?: string;
+			email?: string | null;
+			name?: string | null;
+			role?: string;
+		};
 		accessToken?: string;
 		refreshToken?: string;
 		accessTokenExpiresAt?: number;

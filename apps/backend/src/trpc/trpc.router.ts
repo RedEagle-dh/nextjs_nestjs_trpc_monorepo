@@ -14,7 +14,7 @@ const t = initTRPC.context<TRPCContext>().create();
 
 const isAuthenticated = t.middleware(async (opts) => {
 	// 'opts' statt 'otps'
-	if (!opts.ctx.user) {
+	if (!opts.ctx.session) {
 		throw new TRPCError({
 			code: "UNAUTHORIZED",
 			message: "You are not authenticated.",
@@ -23,7 +23,7 @@ const isAuthenticated = t.middleware(async (opts) => {
 	return opts.next({
 		ctx: {
 			...opts.ctx,
-			user: opts.ctx.user,
+			session: opts.ctx.session,
 		},
 	});
 });

@@ -15,13 +15,22 @@ const tokenOutputSchema = z.object({
 		id: z.string(),
 		email: z.string(),
 		name: z.string(),
+		role: z.string(),
 	}),
 	accessToken: z.string(),
 	refreshToken: z.string(),
 	accessTokenExpiresAt: z.number(),
 });
 
+const logoutInputSchema = z.object({
+	userId: z.string(),
+	accessToken: z.string(),
+	refreshToken: z.string(),
+});
+
 const refreshTokenInputSchema = z.object({
+	userId: z.string(),
+	accessToken: z.string().optional(),
 	refreshToken: z.string(),
 });
 
@@ -29,12 +38,6 @@ const t = initTRPC.context<TRPCContext>().create();
 
 export const publicProcedure = t.procedure;
 export const protectedProcedure = t.procedure.use(async (opts) => {
-  // This middleware is a placeholder for the generated contract.
-  // Actual authentication and authorization logic resides in the backend.
-  if (!opts.ctx.user && opts.path !== 'healthcheck') { /* Example to allow healthcheck */ 
-    // console.warn(`[tRPC Contract] Protected procedure '${opts.path}' called without user context.`);
-    // throw new TRPCError({ code: 'UNAUTHORIZED' }); // Optional: make contract stricter
-  }
   return opts.next({ ctx: opts.ctx });
 });
 
@@ -44,13 +47,21 @@ export const appRouter = t.router({
       .input(loginInputSchema)
       .output(tokenOutputSchema)
       .mutation(({ input, ctx }) => {
-        return { "user": { "id": "PLACEHOLDER_STRING", "email": "PLACEHOLDER_STRING", "name": "PLACEHOLDER_STRING" }, "accessToken": "PLACEHOLDER_STRING", "refreshToken": "PLACEHOLDER_STRING", "accessTokenExpiresAt": 0 };
+        return { "user": { "id": "PLACEHOLDER_STRING", "email": "PLACEHOLDER_STRING", "name": "PLACEHOLDER_STRING", "role": "PLACEHOLDER_STRING" }, "accessToken": "PLACEHOLDER_STRING", "refreshToken": "PLACEHOLDER_STRING", "accessTokenExpiresAt": 0 };
+      }),
+    logout: publicProcedure
+      .input(logoutInputSchema)
+      .output(z.object({
+			status: z.number(),
+		}))
+      .mutation(({ input, ctx }) => {
+        return { "status": 0 };
       }),
     refreshToken: publicProcedure
       .input(refreshTokenInputSchema)
       .output(tokenOutputSchema)
       .mutation(({ input, ctx }) => {
-        return { "user": { "id": "PLACEHOLDER_STRING", "email": "PLACEHOLDER_STRING", "name": "PLACEHOLDER_STRING" }, "accessToken": "PLACEHOLDER_STRING", "refreshToken": "PLACEHOLDER_STRING", "accessTokenExpiresAt": 0 };
+        return { "user": { "id": "PLACEHOLDER_STRING", "email": "PLACEHOLDER_STRING", "name": "PLACEHOLDER_STRING", "role": "PLACEHOLDER_STRING" }, "accessToken": "PLACEHOLDER_STRING", "refreshToken": "PLACEHOLDER_STRING", "accessTokenExpiresAt": 0 };
       }),
   }),
   user: t.router({

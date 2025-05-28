@@ -529,9 +529,9 @@ export class TrpcContractGenerator {
 					)
 						continue;
 
-					const typeProperty = procDecoratorArg.getProperty("type") as
-						| PropertyAssignment
-						| undefined;
+					const typeProperty = procDecoratorArg.getProperty(
+						"type",
+					) as PropertyAssignment | undefined;
 					const isProtectedProperty = procDecoratorArg.getProperty(
 						"isProtected",
 					) as PropertyAssignment | undefined;
@@ -929,17 +929,6 @@ export class TrpcContractGenerator {
 		code += "export const publicProcedure = t.procedure;\n";
 		code +=
 			"export const protectedProcedure = t.procedure.use(async (opts) => {\n";
-		code +=
-			"  // This middleware is a placeholder for the generated contract.\n";
-		code +=
-			"  // Actual authentication and authorization logic resides in the backend.\n";
-		code +=
-			"  if (!opts.ctx.user && opts.path !== 'healthcheck') { /* Example to allow healthcheck */ \n";
-		code +=
-			"    // console.warn(`[tRPC Contract] Protected procedure '${opts.path}' called without user context.`);\n";
-		code +=
-			"    // throw new TRPCError({ code: 'UNAUTHORIZED' }); // Optional: make contract stricter\n";
-		code += "  }\n";
 		code += "  return opts.next({ ctx: opts.ctx });\n";
 		code += "});\n\n";
 

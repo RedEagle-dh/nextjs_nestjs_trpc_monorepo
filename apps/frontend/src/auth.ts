@@ -1,14 +1,39 @@
-// auth.ts
 import NextAuth, {
 	type User as NextAuthUser,
 	type NextAuthConfig,
 	type Session,
-	type DefaultSession,
-} from "next-auth"; // Session und DefaultSession importieren
+} from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { TRPCClientError, serverTrpcClient } from "./utils/server-trpc"; // Pfad anpassen!
+import { TRPCClientError, publicServerTrpcClient } from "./utils/server-trpc";
 
-const TOKEN_REFRESH_BUFFER_SECONDS = 60;
+const TOKEN_REFRESH_BUFFER_SECONDS = 15;
+
+/* class Mutex {
+	private queue: Array<() => void> = [];
+	private locked = false;
+
+	async lock(): Promise<void> {
+		return new Promise((resolve) => {
+			if (this.locked) {
+				this.queue.push(resolve);
+			} else {
+				this.locked = true;
+				resolve();
+			}
+		});
+	}
+
+	unlock(): void {
+		if (this.queue.length > 0) {
+			const nextResolve = this.queue.shift();
+			if (nextResolve) nextResolve();
+		} else {
+			this.locked = false;
+		}
+	}
+}
+
+const refreshMutex = new Mutex(); */
 
 export const config: NextAuthConfig = {
 	providers: [
@@ -23,11 +48,10 @@ export const config: NextAuthConfig = {
 				password: { label: "Password", type: "password" },
 			},
 			async authorize(credentials): Promise<NextAuthUser | null> {
-				const typedCredentials = credentials as {
+				const { email, password } = credentials as {
 					email?: string;
 					password?: string;
 				};
-				const { email, password } = typedCredentials;
 
 				if (
 					!email ||
@@ -42,11 +66,10 @@ export const config: NextAuthConfig = {
 
 				try {
 					const loginResult =
-						await serverTrpcClient.auth.login.mutate({
-							email: email,
-							password: password,
+						await publicServerTrpcClient.auth.login.mutate({
+							email,
+							password,
 						});
-
 					if (
 						loginResult.accessToken &&
 						loginResult.refreshToken &&
@@ -57,29 +80,20 @@ export const config: NextAuthConfig = {
 							id: loginResult.user.id,
 							email: loginResult.user.email,
 							name: loginResult.user.name,
+							role: loginResult.user.role,
 							accessToken: loginResult.accessToken,
 							refreshToken: loginResult.refreshToken,
 							accessTokenExpiresAt:
 								loginResult.accessTokenExpiresAt,
 						};
 					}
-					console.error(
-						"Auth.js/authorize: Unvollständige Antwort von tRPC Login (fehlende Token-Daten):",
-						loginResult,
-					);
 					return null;
 				} catch (error) {
 					console.error(
-						"Auth.js/authorize: Fehler beim Aufruf der tRPC Login-Mutation:",
-						error,
+						"Auth.js/authorize: Fehler beim Aufruf der tRPC Login-Mutation",
 					);
 					if (error instanceof TRPCClientError) {
-						console.log(
-							"TRPC Error Code:",
-							error.data?.code,
-							"Message:",
-							error.message,
-						);
+						console.log("TRPC Error Code:", error.data?.code);
 					}
 					return null;
 				}
@@ -88,10 +102,10 @@ export const config: NextAuthConfig = {
 	],
 	session: {
 		strategy: "jwt",
+		maxAge: 7 * 24 * 60 * 60,
 	},
 	callbacks: {
 		async jwt({ token, user, account }) {
-			// Initialer Login
 			if (account && user) {
 				return {
 					userId: user.id,
@@ -100,61 +114,43 @@ export const config: NextAuthConfig = {
 					accessToken: user.accessToken,
 					refreshToken: user.refreshToken,
 					accessTokenExpiresAt: user.accessTokenExpiresAt,
+					role: user.role,
 				};
 			}
 
-			// Token noch gültig?
-			if (
-				token.accessTokenExpiresAt &&
-				Date.now() / 1000 <
-					token.accessTokenExpiresAt - TOKEN_REFRESH_BUFFER_SECONDS
-			) {
-				return token;
-			}
-
-			// Refresh Token fehlt? -> Fehler
-			if (!token.refreshToken) {
-				return { ...token, error: "RefreshAccessTokenError" };
-			}
-
-			// Versuche Refresh
 			try {
+				if (
+					token.accessTokenExpiresAt &&
+					Date.now() / 1000 <
+						token.accessTokenExpiresAt -
+							TOKEN_REFRESH_BUFFER_SECONDS
+				) {
+					return token;
+				}
+				if (!token.refreshToken || !token.userId) {
+					return { ...token, error: "RefreshAccessTokenError" };
+				}
 				const refreshedTokens =
-					await serverTrpcClient.auth.refreshToken.mutate({
+					await publicServerTrpcClient.auth.refreshToken.mutate({
 						refreshToken: token.refreshToken,
+						userId: token.userId,
+						accessToken: token.accessToken,
 					});
+
 				return {
 					...token,
 					accessToken: refreshedTokens.accessToken,
 					accessTokenExpiresAt: refreshedTokens.accessTokenExpiresAt,
-					refreshToken:
-						refreshedTokens.refreshToken ?? token.refreshToken,
-					error: undefined, // Fehler zurücksetzen
+					refreshToken: refreshedTokens.refreshToken,
+					error: undefined,
 				};
 			} catch (error) {
-				console.error(
-					"Auth.js/jwt: Error refreshing access token:",
-					error,
-				);
-				return {
-					...token,
-					accessToken: undefined,
-					accessTokenExpiresAt: undefined,
-					// Optional: refreshToken auch entfernen, wenn er als ungültig betrachtet wird
-					// refreshToken: undefined,
-					error: "RefreshAccessTokenError",
-				};
+				return { ...token, error: "RefreshAccessTokenError" };
 			}
 		},
 		async session({ session: originalSessionInput, token }) {
-			// Baue das neue Session-Objekt für den Client auf.
-			// 'token' ist hier die maßgebliche Quelle nach dem jwt-Callback.
-			// 'originalSessionInput' liefert 'expires' und ggf. eine Basis-User-Struktur von NextAuth.
-
 			const newSession: Session = {
-				// Typisiere mit deinem erweiterten Session-Typ
-				expires: originalSessionInput.expires, // Wichtig: von NextAuth bereitgestellt
-				// Initialisiere optionale Felder als undefined oder basierend auf dem Token
+				expires: originalSessionInput.expires,
 				user: undefined,
 				accessToken: undefined,
 				error: undefined,
@@ -162,30 +158,24 @@ export const config: NextAuthConfig = {
 
 			if (token.userId) {
 				newSession.user = {
-					// Behalte Standardfelder von originalSessionInput.user bei, falls vorhanden und gewünscht
 					name: token.name ?? originalSessionInput.user?.name ?? null,
 					email:
 						token.email ?? originalSessionInput.user?.email ?? null,
 					image: originalSessionInput.user?.image ?? null,
-					// Überschreibe/Setze die ID aus dem Token
 					id: token.userId,
+					role: token.role ?? originalSessionInput.user?.role ?? null,
 				};
 			} else if (originalSessionInput.user) {
-				// Falls kein userId im Token, aber die ursprüngliche Session hatte einen User
-				// (z.B. für anonyme Sessions, falls du so etwas hättest)
 				newSession.user = originalSessionInput.user;
 			}
-			// Wenn weder token.userId noch originalSessionInput.user existiert, bleibt newSession.user undefined.
 
 			if (token.accessToken) {
 				newSession.accessToken = token.accessToken;
 			}
-			// Wenn token.accessToken undefined ist (z.B. nach Refresh-Fehler), bleibt newSession.accessToken undefined.
 
 			if (token.error) {
 				newSession.error = token.error;
 			}
-			// Wenn token.error undefined ist, bleibt newSession.error undefined.
 
 			return newSession;
 		},
@@ -197,6 +187,36 @@ export const config: NextAuthConfig = {
 	secret: process.env.AUTH_SECRET,
 	trustHost: process.env.NODE_ENV !== "production",
 	debug: process.env.NODE_ENV === "development",
+	cookies: {
+		sessionToken: {
+			name: "authjs.session-token",
+			options: {
+				httpOnly: true,
+				sameSite: "lax",
+				path: "/",
+				secure: process.env.NODE_ENV === "production",
+			},
+		},
+	},
+	events: {
+		signOut: async (message) => {
+			if ("token" in message && message.token) {
+				const payload = message.token;
+				if (
+					!payload.accessToken ||
+					!payload.refreshToken ||
+					!payload.userId
+				) {
+					return;
+				}
+				await publicServerTrpcClient.auth.logout.mutate({
+					accessToken: payload.accessToken,
+					refreshToken: payload.refreshToken,
+					userId: payload.userId,
+				});
+			}
+		},
+	},
 };
 
 export const { handlers, signIn, signOut, auth } = NextAuth(config);
