@@ -1,4 +1,3 @@
-"use server";
 import { auth, signOut } from "@/auth";
 import { AppRouter } from "@mono/trpc-source/index";
 import {
