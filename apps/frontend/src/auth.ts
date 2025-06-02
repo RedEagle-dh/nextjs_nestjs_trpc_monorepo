@@ -185,7 +185,7 @@ export const config: NextAuthConfig = {
 		error: "/",
 	},
 	secret: process.env.AUTH_SECRET,
-	trustHost: process.env.NODE_ENV !== "production",
+	trustHost: true,
 	debug: process.env.NODE_ENV === "development",
 	cookies: {
 		sessionToken: {

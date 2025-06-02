@@ -1,4 +1,4 @@
-import type { AppRouter } from "@mono/trpc-source/index";
+import type { AppRouter } from "@mono/trpc/index";
 import { createTRPCContext } from "@trpc/tanstack-react-query";
 
 export const { TRPCProvider, useTRPC, useTRPCClient } =

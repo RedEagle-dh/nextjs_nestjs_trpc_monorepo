@@ -1,5 +1,5 @@
 "use client";
-import type { AppRouter } from "@mono/trpc-server";
+import type { AppRouter } from "@mono/trpc/index";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
 	TRPCLink,
