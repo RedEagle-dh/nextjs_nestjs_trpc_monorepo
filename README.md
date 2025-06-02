@@ -1,238 +1,366 @@
-# Nextjs Nestjs TRPC Turborepo
+# Next.js + NestJS + tRPC Monorepo
 
-## Übersicht
+A production-ready, type-safe full-stack monorepo template featuring automatic API contract generation.
 
-Dieses Projekt ist ein Full-Stack Monorepo, das ein Next.js Frontend, ein NestJS Backend und eine typsichere API-Schicht mittels tRPC kombiniert. Ein besonderes Merkmal ist der benutzerdefinierte Workflow zur Definition von tRPC-Prozeduren im Backend und zur automatischen Generierung eines typsicheren Vertrags für das Frontend.
+## Overview
 
-Das Monorepo wird mit **pnpm Workspaces** und **Turborepo** für effizientes Build-Management und Skriptausführung verwaltet.
+This project is a Full-Stack monorepo that combines a Next.js frontend, NestJS backend, and type-safe API layer using tRPC. The standout feature is a **custom decorator-based workflow** for defining tRPC procedures in the backend with **automatic contract generation** for the frontend.
 
-## Architektur
+The monorepo is managed with **pnpm Workspaces** and **Turborepo** for efficient build management and script execution.
 
-Das Projekt ist in mehrere Kernbereiche unterteilt:
+## 🚀 What Makes This Project Special
 
-* **Monorepo Management:**
-    * **pnpm Workspaces:** Verwaltet Abhängigkeiten über die verschiedenen Pakete und Anwendungen hinweg.
-    * **Turborepo:** Orchestriert Build-Prozesse, Tests und Linting für das gesamte Monorepo und optimiert diese durch Caching.
+### Revolutionary Type-Safe API Development
+Instead of manually maintaining tRPC routers and keeping frontend/backend in sync, this project introduces a **decorator-based approach** where:
 
-* **Backend (`apps/backend`):**
-    * Entwickelt mit **NestJS**, einem progressiven Node.js-Framework für den Bau effizienter und skalierbarer serverseitiger Anwendungen.
-    * Verantwortlich für die Geschäftslogik, Datenbankinteraktionen (z.B. über `DbModule`) und Authentifizierung (`AuthService`).
-    * Definiert tRPC-Prozeduren mithilfe von benutzerdefinierten Decorators (`@TrpcRouter`, `@TrpcProcedure`) direkt in den NestJS Providern.
-    * Ein `MainTrpcRouterFactory` baut zur Laufzeit den tRPC-Router mit den echten Implementierungen aus diesen dekorierten Providern.
-    * Ein `TRPCController` und `TRPCService` stellen den tRPC-Endpunkt unter `/trpc` bereit.
+1. **Single Source of Truth**: Define tRPC procedures once in your NestJS services using `@TrpcRouter` and `@TrpcProcedure` decorators
+2. **Automatic Contract Generation**: A custom code generator analyzes your backend decorators and automatically generates the complete tRPC contract for the frontend
+3. **Zero Manual Synchronization**: No more manually updating API types or keeping schemas in sync
 
-* **Frontend (`apps/frontend`):**
-    * Entwickelt mit **Next.js**, einem React-Framework für serverseitiges Rendering und statische Seitengenerierung.
-    * Verwendet **TanStack Query (React Query)** für das Data-Fetching und State-Management auf Client-Seite.
-    * Integriert tRPC über einen typsicheren Client, der auf dem generierten Vertrag aus dem `packages/trpc`-Paket basiert.
+### Key Advantages ✅
 
-* **tRPC Schicht:**
-    * **`packages/trpc` (agiert als Contract-Paket, Name in `package.json`: `@mono/trpc-server`):**
-        * Enthält die Definition des `TRPCContext` (in `server.ts`).
-        * Beinhaltet den **automatisch generierten tRPC-Vertrag** (`trpc-contract.ts`). Diese Datei definiert den `appRouter` mit allen Prozeduren, deren Input- und Output-Zod-Schemata (extrahiert aus dem Backend) und Placeholder-Implementierungen für reine Typsicherheitszwecke im Frontend.
-    * **`apps/backend/src/trpc/decorators.ts`:** Definiert die `@TrpcRouter`- und `@TrpcProcedure`-Decorators, die im Backend zur Kennzeichnung von tRPC-Definitionen verwendet werden.
-    * **`apps/backend/src/generator/` (Codegenerator-Modul):**
-        * Enthält den `TrpcContractGenerator` (`code-generator.ts`) und das ausführende Skript (`run.ts`).
-        * Dieses Modul parst den Backend-Code (speziell die mit Decorators versehenen Klassen/Methoden), extrahiert die tRPC-Struktur sowie Input-/Output-Zod-Schemata und generiert die `trpc-contract.ts`-Datei im `packages/trpc`-Paket.
+- **🔒 End-to-End Type Safety**: From database to UI with TypeScript and tRPC
+- **⚡ Developer Experience**: Write API logic once, get frontend types automatically  
+- **🏗️ Domain-Driven Architecture**: Organize tRPC routes by business domains
+- **📦 Monorepo Best Practices**: Efficient dependency management with pnpm and Turborepo
+- **🐳 Production Ready**: Optimized Docker builds with multi-stage setup
+- **🔄 Hot Reloading**: Full-stack development with instant feedback
 
-## Key Features
+### Trade-offs to Consider ⚠️
 
-* **End-to-End Typsicherheit:** Von der Datenbank bis zum UI dank TypeScript und tRPC.
-* **Single Source of Truth für API-Definitionen:** tRPC-Prozeduren (Signaturen, Input-/Output-Validierungsschemata mit Zod) werden einmal im Backend-Code mithilfe von Decorators definiert.
-* **Automatisierte Vertragsgenerierung:** Ein benutzerdefiniertes Skript generiert den tRPC-Router-Vertrag für das Frontend, was manuelle Synchronisation eliminiert.
-* **Domain-orientierte Router-Struktur:** Backend tRPC-Router können nach fachlichen Domänen aufgeteilt und dynamisch zu einem Hauptrouter zusammengeführt werden.
-* **Effizientes Monorepo-Management:** Durch pnpm und Turborepo.
+- **Learning Curve**: Custom decorator system requires initial understanding
+- **Build Dependency**: Frontend depends on contract generation from backend
+- **Complexity**: More setup compared to traditional REST APIs
+- **Framework Lock-in**: Tightly coupled to NestJS and tRPC ecosystem
 
-## Projektstruktur (vereinfacht)
+## Architecture
+
+The project is structured into several core areas:
+
+**Monorepo Management:**
+- **pnpm Workspaces**: Manages dependencies across packages and applications
+- **Turborepo**: Orchestrates build processes, tests, and linting with intelligent caching
+
+**Backend (`apps/backend`):**
+- Built with **NestJS**, a progressive Node.js framework for scalable server-side applications
+- Handles business logic, database interactions (via `DbModule`), and authentication (`AuthService`)
+- Defines tRPC procedures using custom decorators (`@TrpcRouter`, `@TrpcProcedure`) directly in NestJS providers
+- `MainTrpcRouterFactory` builds the tRPC router at runtime with real implementations from decorated providers
+- `TRPCController` and `TRPCService` expose the tRPC endpoint at `/trpc`
+
+**Frontend (`apps/frontend`):**
+- Built with **Next.js**, a React framework for server-side rendering and static site generation
+- Uses **TanStack Query (React Query)** for data fetching and client-side state management
+- Integrates tRPC via a type-safe client based on the auto-generated contract from `packages/trpc`
+
+**tRPC Layer:**
+- **`packages/trpc` (Contract Package, npm name: `@mono/trpc`):**
+  - Contains `TRPCContext` definition (in `server.ts`)
+  - Includes the **auto-generated tRPC contract** (`trpc-contract.ts`) with all procedures, input/output Zod schemas, and placeholder implementations for frontend type safety
+- **`apps/backend/src/trpc/decorators.ts`**: Defines `@TrpcRouter` and `@TrpcProcedure` decorators for marking tRPC definitions
+- **`apps/backend/src/generator/` (Code Generator Module):**
+  - Contains `TrpcContractGenerator` (`code-generator.ts`) and execution script (`run.ts`)
+  - Parses backend code (decorator-annotated classes/methods), extracts tRPC structure and Zod schemas, generates `trpc-contract.ts`
+
+## Project Structure
 ```
-n2_stickstoff_monorepo/
+t3_nest_turborepo/
 ├── apps/
-│   ├── backend/        # NestJS Anwendung
+│   ├── backend/        # NestJS Application
 │   │   ├── src/
-│   │   │   ├── user/       # Beispiel Domänenmodul (z.B. user.trpc.ts)
+│   │   │   ├── healthcheck/    # Example domain module (healthcheck.trpc.ts)
 │   │   │   ├── trpc/
 │   │   │   │   ├── decorators.ts
-│   │   │   │   ├── trpc-main.router.ts  # MainTrpcRouterFactory
+│   │   │   │   ├── trpc.router.ts    # MainTrpcRouterFactory
 │   │   │   │   ├── trpc.service.ts
 │   │   │   │   └── trpc.controller.ts
 │   │   │   ├── generator/
-│   │   │   │   ├── code-generator.ts    # TrpcContractGenerator Klasse
-│   │   │   │   └── run.ts               # Skript zum Ausführen des Generators
-│   │   │   └── main.ts                 # Backend Startpunkt
+│   │   │   │   ├── code-generator.ts # TrpcContractGenerator class
+│   │   │   │   └── run.ts            # Generator execution script
+│   │   │   └── main.ts               # Backend entry point
 │   │   └── package.json
-│   └── frontend/       # Next.js Anwendung
+│   └── frontend/       # Next.js Application
 │       ├── src/
 │       │   ├── utils/
-│       │   │   ├── trpc.ts          # tRPC Hooks Setup
-│       │   │   └── react-trpc.tsx   # TRPCProvider Setup
+│       │   │   ├── trpc.ts           # tRPC hooks setup
+│       │   │   └── react-trpc.tsx    # TRPCProvider setup
 │       │   └── app/
-│       │       └── page.tsx         # Beispielkomponente mit tRPC-Aufruf
+│       │       └── page.tsx          # Example component with tRPC usage
 │       └── package.json
 ├── packages/
-│   ├── trpc/           # Fungiert als Contract-Paket (Name: @mono/trpc-server)
-│   │   ├── server.ts               # Definition von TRPCContext
-│   │   ├── trpc-contract.ts        # GENERIERTER AppRouter für Frontend-Typen
+│   ├── trpc/           # Contract Package (npm: @mono/trpc)
+│   │   ├── server.ts               # TRPCContext definition
+│   │   ├── trpc-contract.ts        # GENERATED AppRouter for frontend types
 │   │   └── package.json
-│   └── ui/             # (Optional) Geteilte UI-Komponenten
-├── tools/              # Alternativer Ort für den Generator, falls nicht im Backend
+│   ├── prisma/         # Database Schema & Client
+│   │   ├── schema.prisma
+│   │   └── package.json
+│   └── ui/             # (Optional) Shared UI components
 ├── package.json        # Root package.json
 ├── pnpm-workspace.yaml
-└── turbo.json
+├── turbo.json
+└── docker-compose.yml
 ```
 
-## Getting Started
+## 🚀 Quick Start
 
-### Voraussetzungen
+### Prerequisites
 
-* Node.js (empfohlen v18 oder höher, siehe `engines` in root `package.json`)
-* pnpm (Version siehe `packageManager` in root `package.json`, z.B. `pnpm@9.0.0`)
+- **Node.js** v22+ (check `engines` in root `package.json`)
+- **pnpm** (version specified in `packageManager` field, e.g., `pnpm@9.0.0`)
+- **Docker** (optional, for containerized development)
 
-### Installation
+### Clean Setup
 
-1.  Klone das Repository.
-2.  Installiere die Abhängigkeiten im Root-Verzeichnis des Monorepos:
-    ```bash
-    pnpm install
-    ```
+1. **Clone the repository**
+   ```bash
+   git clone git@github.com:RedEagle-dh/t3_nest_turborepo.git
+   cd t3_nest_turborepo
+   ```
 
-### Umgebungsvariablen
+2. **Install dependencies**
+   ```bash
+   pnpm install
+   ```
 
-* **Backend (`apps/backend/.env`):**
-    * `PORT`: Port, auf dem das Backend läuft (Standard: `3001` wie von dir bestätigt, oder `3000` falls `PORT` nicht gesetzt).
-    * `JWT_SECRET`: Geheimer Schlüssel für JWT-Authentifizierung (verwendet von `AuthService`).
-    * Weitere Datenbank- oder Service-spezifische Variablen.
-* **Frontend (`apps/frontend/.env.local`):**
-    * `NEXT_PUBLIC_TRPC_API_URL`: (Optional, falls die tRPC URL nicht fest im Code steht) z.B. `http://localhost:3001/trpc`. Aktuell ist sie fest in `react-trpc.tsx` kodiert.
+3. **Set up environment variables**
+   
+   Checkout the .env.example files
 
-## Entwicklung
+4. **Generate Prisma client** (if using database)
+   ```bash
+   pnpm --filter @mono/prisma generate
+   ```
 
-### Dev-Server starten
+5. **Build packages**
+   ```bash
+   pnpm build
+   ```
 
-Um Frontend und Backend parallel im Entwicklungsmodus zu starten (mit Hot Reloading):
+6. **Start development servers**
+   ```bash
+   pnpm dev
+   ```
+
+   This starts:
+   - Backend: `http://localhost:3001`
+   - Frontend: `http://localhost:3000`
+   - tRPC Endpoint: `http://localhost:3001/trpc`
+
+### Docker Setup (Alternative)
+
 ```bash
-pnpm dev
+# Start the entire stack
+docker-compose up --build
+
+# Or build and run backend only
+cd apps/backend
+docker build -t monorepo-backend .
+docker run -p 3001:3001 monorepo-backend
 ```
 
-Dieses Skript wird von Turborepo ausgeführt und startet die dev-Skripte der einzelnen Anwendungen (z.B. next dev für Frontend, nest start --watch für Backend).
+## 🔧 Development Workflow
 
-## Linting und Formatierung
-* Formatieren des gesamten Codes:
-```Bash
+The core of this project is the type-safe API workflow with automatic contract generation:
 
-pnpm format
-```
-* Linting (z.B. mit ESLint, Biome):
-```Bash
+### 1. Define Procedures in Backend
 
-pnpm lint
-```
-## tRPC Workflow
-Der Kern dieses Projekts ist der typsichere API-Workflow mit tRPC:
+Create or edit a NestJS provider (e.g., `apps/backend/src/healthcheck/healthcheck.trpc.ts`):
 
-1. Prozeduren im Backend definieren:
-
-* Erstelle oder bearbeite einen NestJS Provider (z.B. apps/backend/src/user/user.trpc.ts).
-* Dekoriere die Klasse mit @TrpcRouter({ domain: 'user' }), um sie als Teil eines tRPC-Routers (hier unter dem Namespace user) zu kennzeichnen.
-* Definiere Methoden für Queries oder Mutations. Dekoriere diese mit @TrpcProcedure({...}).
-* Gib im @TrpcProcedure-Decorator an:
-  * type: 'query' oder 'mutation'.
-  * isProtected: true (benötigt Authentifizierung, Standard-Middleware wird angewendet) oder false (öffentlich).
-  * inputType: z.object({...}): Ein inline definiertes Zod-Schema für die Validierung der Eingabedaten.
-  * outputType: z.object({...}): Ein inline definiertes Zod-Schema für die Struktur der Ausgabedaten (wichtig für den Generator und optionale Backend-Output-Validierung).
-  * Implementiere die Methode mit deiner NestJS-Geschäftslogik. Sie sollte einen Wert zurückgeben, der dem outputType-Schema entspricht.
-
-Beispiel:
-
-```TypeScript
-
-// apps/backend/src/user/user.trpc.ts
+```typescript
 import { z } from 'zod';
-import { TrpcRouter, TrpcProcedure } from '../trpc/decorators'; // Pfad anpassen
-// ...
-@TrpcRouter({ domain: 'user' })
-export class UserTrpcRouter {
-    // ...
-    @TrpcProcedure({
-        type: 'query',
-        isProtected: false,
-        inputType: z.object({ id: z.string() }),
-        outputType: z.object({ id: z.string(), name: z.string() })
+import { TrpcRouter, TrpcProcedure } from '../trpc/decorators';
+import { Injectable } from '@nestjs/common';
+
+@Injectable()
+@TrpcRouter({ domain: 'healthcheck' })
+export class HealthcheckTrpcRouter {
+  
+  @TrpcProcedure({
+    type: 'query',
+    isProtected: false,  // Public endpoint
+    inputType: z.string(),
+    outputType: z.object({ 
+      status: z.string(), 
+      timestamp: z.string() 
     })
-    async getUserById(input: { id: string }): Promise<{ id: string; name: string }> {
-        // ... deine Logik mit this.userService.findById(input.id) ...
-        return { id: input.id, name: "Beispiel User" };
-    }
+  })
+  async getHealthcheck(input: string): Promise<{ status: string; timestamp: string }> {
+    return {
+      status: 'OK',
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  @TrpcProcedure({
+    type: 'mutation',
+    isProtected: true,   // Requires authentication
+    inputType: z.object({ name: z.string() }),
+    outputType: z.object({ id: z.string(), name: z.string() })
+  })
+  async createUser(input: { name: string }): Promise<{ id: string; name: string }> {
+    // Your NestJS business logic here
+    return { id: '123', name: input.name };
+  }
 }
 ```
-2. tRPC Vertragsdatei generieren:
-Nachdem du Änderungen an den tRPC-Prozedurdefinitionen im Backend vorgenommen hast (neue Prozeduren, geänderte Input-/Output-Schemata), musst du den Frontend-Vertrag neu generieren.
 
-* Führe das Generierungsskript aus (angenommen, es ist in apps/backend/package.json oder der Root package.json definiert):
-```Bash
+### 2. Generate tRPC Contract
 
-pnpm --filter @mono/backend generate:trpc-contract # Beispielhafter Aufruf
+After making changes to tRPC procedure definitions:
+
+```bash
+pnpm --filter backend generate:trpc-contract
 ```
 
-(Das Skript apps/backend/src/generator/run.ts führt die TrpcContractGenerator-Klasse aus.)
+This updates `packages/trpc/trpc-contract.ts` with type-safe definitions for the frontend.
 
-* Dies aktualisiert die Datei packages/trpc/trpc-contract.ts. Diese Datei sollte nicht manuell bearbeitet werden und idealerweise in .gitignore stehen, wenn sie immer frisch generiert wird (oder committet werden, wenn sie Teil des "stabilen" Vertrags ist). Für den Anfang ist es besser, sie zu committen, um zu sehen, was generiert wird.
-* Automatisierung (Optional für später): Für eine bessere DX kann dieser Schritt mit einem File-Watcher (wie nodemon) automatisiert werden, der bei Änderungen in den Backend *.trpc.ts-Dateien den Generator startet, oder über einen Git Pre-Commit Hook.
+### 3. Use in Frontend
 
-3. Prozeduren im Frontend verwenden:
-
-* Importiere die tRPC-Hooks aus frontend/src/utils/trpc.ts.
-* Verwende die neue tRPC v11 / TanStack Query v5 Syntax:
-
-
-```ts
-// frontend/src/app/page.tsx
+```typescript
+// apps/frontend/src/app/page.tsx
 "use client";
 import { useTRPC } from "@/utils/trpc";
 import { useQuery, useMutation } from "@tanstack/react-query";
 
-export default function MyComponent() {
+export default function HomePage() {
   const trpc = useTRPC();
 
   const healthcheckQuery = useQuery(
-    trpc.user.getHealthcheck.queryOptions("ein beliebiger string input")
+    trpc.healthcheck.getHealthcheck.queryOptions("ping")
   );
 
-  // const userByIdQuery = useQuery(
-  //   trpc.user.getUserById.queryOptions({ id: "123" })
-  // );
+  const createUserMutation = useMutation(
+    trpc.healthcheck.createUser.mutationOptions()
+  );
 
-  if (healthcheckQuery.isPending) return <p>Loading healthcheck...</p>;
+  if (healthcheckQuery.isPending) return <p>Loading...</p>;
   if (healthcheckQuery.isError) return <p>Error: {healthcheckQuery.error.message}</p>;
 
   return (
     <div>
-      <p>Healthcheck Status: {healthcheckQuery.data?.status} at {healthcheckQuery.data?.timestamp}</p>
-      {/* <p>User: {userByIdQuery.data?.name}</p> */}
+      <h1>Health: {healthcheckQuery.data.status}</h1>
+      <p>Last check: {healthcheckQuery.data.timestamp}</p>
+      
+      <button 
+        onClick={() => createUserMutation.mutate({ name: "John" })}
+        disabled={createUserMutation.isPending}
+      >
+        Create User
+      </button>
     </div>
   );
 }
 ```
-## Building für Production
+## 📦 Available Scripts
+
 ```bash
-pnpm build
+# Development
+pnpm dev              # Start all apps in development mode
+pnpm dev:backend      # Start only backend in watch mode  
+pnpm dev:frontend     # Start only frontend in development
+
+# Building
+pnpm build            # Build all packages and applications
+pnpm build:backend    # Build only backend
+pnpm build:frontend   # Build only frontend
+
+# Code Quality
+pnpm lint             # Run linting (ESLint, Biome)
+pnpm format           # Format code across entire project
+pnpm type-check       # TypeScript type checking
+
+# tRPC Contract Generation
+pnpm --filter backend generate:trpc-contract
+
+# Database (if using Prisma)
+pnpm --filter @mono/prisma generate    # Generate Prisma client
+pnpm --filter @mono/prisma db:push     # Push schema changes to database
 ```
-Turborepo kümmert sich um die korrekte Build-Reihenfolge der Pakete und Anwendungen.
 
-## Wichtige Skripte (aus `package.json` im Root-Verzeichnis)
-* `pnpm dev`: Startet alle Anwendungen im Entwicklungsmodus.
-* `pnpm build`: Baut alle Anwendungen und Pakete für die Produktion.
-* `pnpm lint`: Führt Linting für das gesamte Projekt aus.
-* `pnpm format`: Formatiert den Code im gesamten Projekt.
-* `pnpm generate:trpc-contract` (oder ähnlich, falls im Backend oder Root definiert): Generiert den tRPC-Vertrag.
+## 🏗️ Build Process
 
-## Kerntechnologien
-* TypeScript
-* pnpm (mit Workspaces)
-* Turborepo (Monorepo Build System)
-* NestJS (Backend Framework)
-* Next.js (Frontend Framework)
-* tRPC (Typsichere API-Schicht)
-* Zod (Schema-Validierung und Typinferenz)
-* TanStack Query (React Query) (Data Fetching und State Management im Frontend)
-* ts-morph (Verwendet vom TrpcContractGenerator zur Code-Analyse im Backend)
-* (Optional) Biome (Formatter/Linter, basierend auf deinen Kommentaren)
+Turborepo ensures the correct build order:
+
+1. **Prisma Client Generation** (`@mono/prisma`)
+2. **tRPC Contract Generation** (`@mono/trpc`) 
+3. **Backend Build** (`backend`)
+4. **Frontend Build** (`frontend`)
+
+## 🐳 Production Deployment
+
+### Docker
+
+```bash
+# Build production image
+docker build -f apps/backend/Dockerfile -t monorepo-backend .
+
+# Run with docker-compose
+docker-compose up --build
+```
+
+### Manual Deployment
+
+```bash
+# Build for production
+pnpm build
+
+# Start backend (production)
+cd apps/backend && node dist/main.js
+
+# Start frontend (production) 
+cd apps/frontend && npm start
+```
+
+## 🛠️ Tech Stack
+
+**Core Technologies:**
+- **TypeScript** - End-to-end type safety
+- **pnpm** (with Workspaces) - Efficient package management
+- **Turborepo** - Monorepo build orchestration with caching
+
+**Backend:**
+- **NestJS** - Scalable Node.js framework
+- **tRPC** - Type-safe API layer
+- **Zod** - Schema validation and type inference
+- **Prisma** - Database ORM and migrations
+- **Redis** - Caching and session storage
+
+**Frontend:**
+- **Next.js** - React framework with SSR/SSG
+- **TanStack Query** (React Query) - Data fetching and state management
+- **Tailwind CSS** - Utility-first CSS framework
+- **shadcn/ui** - Beautiful UI components
+
+**Development Tools:**
+- **ts-morph** - TypeScript code analysis (used by contract generator)
+- **Biome** - Fast formatter and linter
+- **Docker** - Containerization
+- **ESLint** - Code linting
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Make your changes
+4. Ensure code quality: `pnpm check && pnpm check:write`
+5. Regenerate contracts if needed: `pnpm --filter backend generate:trpc-contract`
+6. Commit your changes: `git commit -m 'Add amazing feature'`
+7. Push to the branch: `git push origin feature/amazing-feature`
+8. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙋‍♂️ Support
+
+If you have any questions or need help getting started:
+
+1. Check the [existing issues](../../issues)
+2. Create a new issue with the `question` label
+3. Join our discussions in the [Discussions tab](../../discussions)
+
+---
+
+**Happy coding!** 🚀

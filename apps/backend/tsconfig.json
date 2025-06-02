@@ -19,8 +19,17 @@
 		"noImplicitAny": false,
 		"strictBindCallApply": false,
 		"noFallthroughCasesInSwitch": false,
-		"tsBuildInfoFile": "dist/.tsbuildinfo"
+		"tsBuildInfoFile": "dist/.tsbuildinfo",
+		"paths": {
+			"@mono/trpc/*": ["../../packages/trpc/dist/*"],
+			"@mono/trpc": ["../../packages/trpc/dist/index"]
+		}
 	},
 	"include": ["src/**/*"],
-	"exclude": ["node_modules", "dist"]
+	"exclude": ["node_modules", "dist"],
+	"references": [
+		{
+			"path": "../../packages/trpc"
+		}
+	]
 }

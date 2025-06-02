@@ -27,7 +27,7 @@ COPY packages/prisma packages/prisma
 RUN pnpm --filter=@mono/prisma generate
 
 # Build tRPC package
-RUN pnpm --filter=@mono/trpc-server build
+RUN pnpm --filter=@mono/trpc build
 
 # Build backend
 RUN pnpm --filter=backend build

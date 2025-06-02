@@ -1,5 +1,4 @@
-// src/trpc/trpc-main.router.ts (oder wo deine Factory liegt)
-import { TRPCContext } from "@mono/trpc-server/dist/server"; // Korrekten Pfad sicherstellen
+import { TRPCContext } from "@mono/trpc/server";
 import { Injectable, OnModuleInit } from "@nestjs/common";
 import { ModuleRef, ModulesContainer } from "@nestjs/core";
 import { AnyRouter, TRPCError, initTRPC } from "@trpc/server";

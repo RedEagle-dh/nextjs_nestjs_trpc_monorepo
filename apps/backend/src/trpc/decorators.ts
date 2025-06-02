@@ -1,7 +1,5 @@
-// Stelle sicher, dass der Pfad zu deinem TRPCContext korrekt ist!
-import type { TRPCContext } from "@mono/trpc-server/dist/server";
-// decorators.ts
-import { ZodSchema, ZodTypeDef, z } from "zod";
+import type { TRPCContext } from "@mono/trpc/server";
+import { ZodSchema } from "zod";
 
 export const TRPC_ROUTER_KEY = Symbol("TRPC_ROUTER_KEY");
 export const TRPC_PROCEDURE_KEY = Symbol("TRPC_PROCEDURE_KEY");

@@ -1,11 +1,22 @@
 {
-	"name": "@mono/trpc-server",
+	"name": "@mono/trpc",
 	"version": "1.0.0",
 	"description": "",
-	"main": "dist/trpc-contract.js",
-	"types": "dist/trpc-contract.d.ts",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./server": {
+			"types": "./dist/server.d.ts",
+			"default": "./dist/server.js"
+		}
+	},
 	"scripts": {
-		"build": "tsc -p tsconfig.json"
+		"build": "tsc -p tsconfig.json",
+		"dev": "tsc -p tsconfig.json --watch"
 	},
 	"keywords": [],
 	"author": "",

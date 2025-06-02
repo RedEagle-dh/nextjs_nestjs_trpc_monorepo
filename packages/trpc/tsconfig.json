@@ -1,9 +1,9 @@
 {
 	"compilerOptions": {
 		"target": "ES2022",
-		"module": "ESNext",
+		"module": "commonjs",
 		"declaration": true,
-		"declarationMap": true, // Gut für Go-to-Definition in der IDE über Pakete hinweg
+		"declarationMap": true,
 		"sourceMap": true,
 		"outDir": "./dist",
 		"rootDir": ".",
@@ -12,9 +12,9 @@
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
 		"moduleResolution": "node",
-		"composite": true, // Nötig für TypeScript Project References, optional hier
-		"baseUrl": "./" // Falls Sie interne Pfad-Aliase in diesem Paket verwenden
+		"composite": true,
+		"baseUrl": "./"
 	},
-	"include": ["server.ts", "trpc-contract.ts"],
+	"include": ["*.ts"],
 	"exclude": ["node_modules", "dist"]
 }

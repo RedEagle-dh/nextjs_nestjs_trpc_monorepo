@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { TRPCContext } from "@mono/trpc-server/dist/server";
+import { TRPCContext } from "@mono/trpc/server";
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { TRPCError } from "@trpc/server";
