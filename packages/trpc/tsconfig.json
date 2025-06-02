@@ -1,7 +1,7 @@
 {
 	"compilerOptions": {
 		"target": "ES2022",
-		"module": "commonjs",
+		"module": "ESNext",
 		"declaration": true,
 		"declarationMap": true, // Gut für Go-to-Definition in der IDE über Pakete hinweg
 		"sourceMap": true,
