@@ -1,0 +1,127 @@
+name: CI, Release & Deploy
+
+on:
+  pull_request:
+    branches:
+      - main
+      - stage
+      - develop
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.changes.outputs.backend }}
+      frontend: ${{ steps.changes.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v44
+        with:
+          separator: " "
+      - name: Determine which apps have changed
+        id: changes
+        run: |
+          backend_changed=false
+          frontend_changed=false
+          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            if [[ "$file" == apps/backend/* || "$file" == packages/database/* ]]; then
+              backend_changed=true
+            fi
+            if [[ "$file" == apps/frontend/* || "$file" == packages/database/* ]]; then
+              frontend_changed=true
+            fi
+          done
+          echo "backend=$backend_changed" >> $GITHUB_OUTPUT
+          echo "frontend=$frontend_changed" >> $GITHUB_OUTPUT
+
+  install:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+      - name: Install dependencies
+        run: pnpm install
+
+  release:
+    needs: [detect-changes, install]
+    if: >-
+      needs.detect-changes.outputs.backend == 'true' ||
+      needs.detect-changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      backend_released: ${{ steps.set_release_outputs.outputs.backend }}
+      frontend_released: ${{ steps.set_release_outputs.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+      - name: Install dependencies from cache
+        run: pnpm install
+
+      - name: Release Backend
+        id: release_backend
+        if: needs.detect-changes.outputs.backend == 'true'
+        run: pnpm --filter=backend release
+        env:
+          GITHUB_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
+
+      - name: Release Frontend
+        id: release_frontend
+        if: needs.detect-changes.outputs.frontend == 'true'
+        run: pnpm --filter=frontend release
+        env:
+          GITHUB_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
+
+      - name: Set release outputs
+        id: set_release_outputs
+        run: |
+          backend_released=false
+          frontend_released=false
+          if [[ "${{ steps.release_backend.outcome }}" == "success" ]]; then
+            backend_released=true
+          fi
+          if [[ "${{ steps.release_frontend.outcome }}" == "success" ]]; then
+            frontend_released=true
+          fi
+          echo "backend=$backend_released" >> $GITHUB_OUTPUT
+          echo "frontend=$frontend_released" >> $GITHUB_OUTPUT
+  deploy:
+    needs: release
+    if: >-
+      always() &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/stage') &&
+      (needs.release.outputs.backend_released == 'true' || needs.release.outputs.frontend_released == 'true')
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'stage' }}
+    steps:
+      - name: Trigger Backend Deployment
+        if: needs.release.outputs.backend_released == 'true'
+        run: |
+          echo "Triggering backend deployment for ${{ github.ref_name }}..."
+          curl --request GET "${{ secrets.BACKEND_DEPLOY_WEBHOOK_URL }}" \
+          --header "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
+
+      - name: Trigger Frontend Deployment
+        if: needs.release.outputs.frontend_released == 'true'
+        run: |
+          echo "Triggering frontend deployment for ${{ github.ref_name }}..."
+          curl --request GET "${{ secrets.FRONTEND_DEPLOY_WEBHOOK_URL }}" \
+            --header "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"

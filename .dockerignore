@@ -1,0 +1,29 @@
+# Git
+.git
+.github
+
+# Node
+node_modules
+**/node_modules
+
+# Build-Artefakte
+# dist
+# **/dist
+.next
+**/.next
+
+# Turbo
+.turbo
+
+# Lokale Konfiguration
+.env
+.env.*
+!/.env.example
+
+# IDE-spezifisch
+.idea
+.vscode
+
+# OS-spezifisch
+.DS_Store
+Thumbs.db

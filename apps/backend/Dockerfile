@@ -1,79 +1,83 @@
-FROM node:22-alpine AS builder
+FROM node:22-alpine AS base
 
 WORKDIR /app
 
-RUN npm install -g pnpm
+RUN corepack enable
 
-# Copy workspace configuration
-COPY .npmrc .npmrc
-COPY pnpm-workspace.yaml pnpm-workspace.yaml
-COPY pnpm-lock.yaml pnpm-lock.yaml
-COPY package.json package.json
+#----------------------------------------------------#
+# Stage 2: Pruner                                    #
+#----------------------------------------------------#
 
-# Copy package.json files for all required packages
-COPY apps/backend/package.json apps/backend/package.json
-COPY packages/trpc/package.json packages/trpc/package.json
-COPY packages/prisma/package.json packages/prisma/package.json
+FROM base AS pruner
 
-# Install all dependencies including dev dependencies for building
-RUN pnpm install --filter=backend... --prod=false
+WORKDIR /app
 
-# Copy source code for all packages
-COPY apps/backend apps/backend
-COPY packages/trpc packages/trpc
-COPY packages/prisma packages/prisma
+COPY . .
 
-# Generate Prisma client
-RUN pnpm --filter=@mono/prisma generate
+RUN pnpm install --prod=false
 
-# Build tRPC package
-RUN pnpm --filter=@mono/trpc build
+RUN pnpm turbo prune --scope=backend --docker
 
-# Build backend
+#----------------------------------------------------#
+# Stage 3: Builder                                   #
+#----------------------------------------------------#
+
+FROM pruner AS builder
+
+WORKDIR /app
+
+COPY --from=pruner /app/out/json/ .
+
+RUN pnpm install --prod=false
+
+COPY --from=pruner /app/out/full/ .
+
+RUN pnpm --filter=@mono/database build
+
 RUN pnpm --filter=backend build
 
-# Production stage
-FROM node:22-alpine AS runner
+#----------------------------------------------------#
+# Stage 4: Runner                                    #
+#----------------------------------------------------#
+
+FROM base AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV="production"
+
+RUN apk add --no-cache \
+    openssl
 
 RUN addgroup --system --gid 1001 nodejs \
  && adduser --system --uid 1001 nestapp
 
-WORKDIR /app
-ENV NODE_ENV="production"
+COPY --from=pruner /app/out/json/ .
 
-RUN npm install -g pnpm
+COPY pnpm-lock.yaml .
 
-# Copy workspace configuration
-COPY .npmrc .npmrc
-COPY pnpm-workspace.yaml pnpm-workspace.yaml
-COPY pnpm-lock.yaml pnpm-lock.yaml
-COPY package.json package.json
+COPY pnpm-workspace.yaml .
 
-# Copy package.json files
-COPY apps/backend/package.json apps/backend/package.json
-COPY packages/trpc/package.json packages/trpc/package.json
-COPY packages/prisma/package.json packages/prisma/package.json
+RUN pnpm install --prod
 
-# Install only production dependencies
-RUN pnpm install --filter=backend... --prod
+COPY --from=builder /app/apps/backend/dist ./apps/backend/dist
 
-# Copy built artifacts from builder stage
-COPY --from=builder --chown=nestapp:nodejs /app/apps/backend/dist ./apps/backend/dist
-COPY --from=builder --chown=nestapp:nodejs /app/packages/trpc/dist ./packages/trpc/dist
-COPY --from=builder --chown=nestapp:nodejs /app/packages/prisma/generated ./packages/prisma/generated
-COPY --from=builder --chown=nestapp:nodejs /app/packages/prisma/schema.prisma ./packages/prisma/schema.prisma
+COPY --from=builder /app/packages/database/dist ./apps/backend/node_modules/@mono/database/dist
 
-# Create startup script
-RUN echo $'#!/bin/sh\n\
-set -e\n\
-echo "Syncing database schema..."\n\
-cd /app/packages/prisma && npx prisma db push --schema=./schema.prisma --accept-data-loss --skip-generate\n\
-echo "Starting application..."\n\
-exec node /app/apps/backend/dist/main.js' > /app/start.sh && \
-chmod +x /app/start.sh && \
-chown nestapp:nodejs /app/start.sh
+COPY --from=builder /app/packages/database/generated ./apps/backend/node_modules/@mono/database/generated
+
+COPY --from=builder /app/packages/database/prisma ./packages/database/prisma
+
+COPY --from=builder /app/apps/backend/docker-entrypoint.sh .
+
+RUN chmod +x docker-entrypoint.sh
+
+RUN chown -R nestapp:nodejs .
 
 USER nestapp
+
 EXPOSE 3000
 
-CMD ["/app/start.sh"]
+ENTRYPOINT ["./docker-entrypoint.sh"]
+
+CMD ["node", "apps/backend/dist/main.js"]

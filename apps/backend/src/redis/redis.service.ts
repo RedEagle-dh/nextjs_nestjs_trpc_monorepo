@@ -84,14 +84,10 @@ export class RedisService implements OnModuleDestroy, OnModuleInit {
 			}
 
 			if (args.length > 0) {
-				// Die Signatur für set mit variablen Argumenten ist oft:
-				// set(key: KeyType, value: ValueType, ...args: Array<string | number>): Promise<string | null>;
-				// Der Rückgabetyp von `set` mit Optionen wie NX/XX kann null sein, wenn die Bedingung nicht erfüllt ist.
 				// biome-ignore lint/suspicious/noExplicitAny: <explanation>
 				return await this.redisClient.set(key, value, ...(args as any));
 				// oder spezifischere Aufrufe machen
 			}
-			// Einfaches SET ohne Optionen gibt typischerweise 'OK' zurück
 			return await this.redisClient.set(key, value);
 		} catch (error) {
 			console.error(`Redis SET error for key ${String(key)}:`, error);
@@ -169,10 +165,7 @@ export class RedisService implements OnModuleDestroy, OnModuleInit {
 	 * @returns Die Anzahl der Felder, deren Timeout gesetzt wurde (0 oder 1).
 	 */
 	async expire(key: RedisKey, ttlSeconds: number): Promise<number> {
-		// Rückgabetyp auf number geändert
 		try {
-			// Die ioredis-Typen für expire geben Promise<0|1> zurück, aber wenn dein TS 'number' erwartet, passen wir es an.
-			// Normalerweise ist 0|1 spezifischer und korrekt.
 			return await this.redisClient.expire(key, ttlSeconds);
 		} catch (error) {
 			console.error(`Redis EXPIRE error for key ${String(key)}:`, error);

@@ -1,7 +1,6 @@
-import { TRPCContext } from "@mono/trpc/server";
-import { Injectable, OnModuleInit } from "@nestjs/common";
+import { Inject, Injectable, OnModuleInit } from "@nestjs/common";
 import { ModuleRef, ModulesContainer } from "@nestjs/core";
-import { AnyRouter, TRPCError, initTRPC } from "@trpc/server";
+import { AnyTRPCRouter, TRPCError } from "@trpc/server";
 import { ZodType, z } from "zod";
 import {
 	TRPC_PROCEDURE_KEY,
@@ -9,34 +8,24 @@ import {
 	TrpcProcedureOptions,
 } from "./decorators";
 
-const t = initTRPC.context<TRPCContext>().create();
-
-const isAuthenticated = t.middleware(async (opts) => {
-	// 'opts' statt 'otps'
-	if (!opts.ctx.session) {
-		throw new TRPCError({
-			code: "UNAUTHORIZED",
-			message: "You are not authenticated.",
-		});
-	}
-	return opts.next({
-		ctx: {
-			...opts.ctx,
-			session: opts.ctx.session,
-		},
-	});
-});
-
-export const publicProcedure = t.procedure;
-export const protectedProcedure = t.procedure.use(isAuthenticated);
+import {
+	type InnerTRPCContext,
+	ZENSTACK_GENERATED_ROUTER,
+	createTRPCRouter,
+	mergeRouters,
+	protectedProcedure,
+	publicProcedure,
+} from "@mono/database";
 
 @Injectable()
 export class MainTrpcRouterFactory implements OnModuleInit {
-	private appRouterInstance!: AnyRouter;
+	private appRouterInstance!: AnyTRPCRouter;
 
 	constructor(
 		private readonly moduleRef: ModuleRef,
 		private readonly modulesContainer: ModulesContainer,
+		@Inject(ZENSTACK_GENERATED_ROUTER)
+		private readonly generatedRouter: AnyTRPCRouter,
 	) {}
 
 	onModuleInit() {
@@ -52,7 +41,7 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 		}
 	}
 
-	public getAppRouter(): AnyRouter {
+	public getAppRouter(): AnyTRPCRouter {
 		if (!this.appRouterInstance) {
 			console.warn(
 				"AppRouter not yet built, building now (should have happened in onModuleInit).",
@@ -62,7 +51,7 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 		return this.appRouterInstance;
 	}
 
-	private _buildAppRouter(): AnyRouter {
+	private _buildAppRouter(): AnyTRPCRouter {
 		const proceduresToBuildGrouped: Record<
 			string,
 			// biome-ignore lint/suspicious/noExplicitAny: <explanation>
@@ -136,7 +125,7 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 
 					const resolver = async (procedureHandlerOpts: {
 						input: unknown;
-						ctx: TRPCContext;
+						ctx: InnerTRPCContext;
 						meta?: unknown;
 					}) => {
 						try {
@@ -196,12 +185,14 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 			if (domainKey === "__ROOT__") {
 				Object.assign(finalRouterDefinition, proceduresInDomain);
 			} else {
-				finalRouterDefinition[domainKey] = t.router(proceduresInDomain);
+				finalRouterDefinition[domainKey] =
+					createTRPCRouter(proceduresInDomain);
 				console.log(
 					`Created domain router '${domainKey}' with procedures: ${Object.keys(proceduresInDomain).join(", ")}`,
 				);
 			}
 		}
+
 		if (
 			Object.keys(finalRouterDefinition).length === 0 &&
 			Object.keys(proceduresToBuildGrouped.__ROOT__ || {}).length === 0
@@ -210,6 +201,11 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 				"No root procedures or domain routers were built. The appRouter will be empty.",
 			);
 		}
-		return t.router(finalRouterDefinition);
+
+		const customRouter = createTRPCRouter(finalRouterDefinition);
+
+		const finalAppRouter = mergeRouters(this.generatedRouter, customRouter);
+
+		return finalAppRouter;
 	}
 }

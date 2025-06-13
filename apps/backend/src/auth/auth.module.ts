@@ -1,7 +1,6 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { DbModule } from "src/db/db.module";
-import { DbService } from "src/db/db.service";
 import { RedisModule } from "src/redis/redis.module";
 import { AuthService } from "./auth.service";
 

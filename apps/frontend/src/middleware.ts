@@ -1,17 +1,16 @@
 import { NextAuthRequest } from "next-auth";
 import { NextResponse } from "next/server";
-import { auth, signOut } from "./auth";
+import { auth } from "./auth";
 
-const publicPaths = ["/", "/auth/login", "/auth/register"];
+const protectedPaths: string[] = [];
 
-const protectedPaths = [""];
-
-const adminPaths = ["/admin"];
+const adminPaths: string[] = [];
 
 export default auth((request: NextAuthRequest) => {
 	const { pathname } = request.nextUrl;
 
-	if (publicPaths.includes(pathname)) {
+	// Allow access to public paths without authentication
+	if (!protectedPaths.includes(pathname) && !adminPaths.includes(pathname)) {
 		return NextResponse.next();
 	}
 
@@ -21,8 +20,8 @@ export default auth((request: NextAuthRequest) => {
 		return NextResponse.redirect(new URL("/auth/login", request.url));
 	}
 
-	if (Date.parse(session?.expires) <= Date.now()) {
-		signOut();
+	// Check if session is expired
+	if (session.expires && Date.parse(session.expires) <= Date.now()) {
 		return NextResponse.redirect(new URL("/auth/login", request.url));
 	}
 
@@ -43,8 +42,7 @@ export const config = {
 		 * - _next/static (static files)
 		 * - _next/image (image optimization files)
 		 * - favicon.ico (favicon file)
-		 * - auth (Auth.js routes)
 		 */
-		"/((?!api/|_next/static/|_next/image/|favicon\\.ico|auth/|.*\\.svg$|.*\\.json$).*)",
+		"/((?!api/|_next/static/|_next/image/|favicon\\.ico|.*\\.svg$|.*\\.json$).*)",
 	],
 };

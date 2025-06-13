@@ -1,0 +1,10 @@
+export { default as RecycleIcon } from "./RecycleIcon";
+export { default as ShirtIcon } from "./ShirtIcon";
+export { default as ExpandIcon } from "./ExpandIcon";
+export { default as CartPlusIcon } from "./CartPlusIcon";
+export { default as CartShoppingIcon } from "./CartShoppingIcon";
+export { default as CashRegisterIcon } from "./CashRegisterIcon";
+export { default as WarnTriangleIcon } from "./WarnTriangleIcon";
+export { default as PhoneIcon } from "./PhoneIcon";
+export { default as MailIcon } from "./MailIcon";
+export { default as SendIcon } from "./SendIcon";

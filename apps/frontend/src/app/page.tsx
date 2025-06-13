@@ -1,50 +1,28 @@
-"use client";
-import { signIn, signOut, useSession } from "next-auth/react";
-import Image from "next/image";
-import { useState } from "react";
+import { publicServerTrpcClient } from "@/utils/server-trpc";
 
-export default function Home() {
-	const [h, setH] = useState("");
-	const { data: session } = useSession();
+export default async function Home() {
+	const { status, timestamp } =
+		await publicServerTrpcClient.healthcheck.getHealthcheck.query("test");
 
 	return (
-		<div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-			<main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-				{session?.user.name ?? "Guest"}
-				<Image
-					className="dark:invert"
-					src="/next.svg"
-					alt="Next.js logo"
-					width={180}
-					height={38}
-					priority
-				/>
-				<button
-					type="button"
-					className="bg-white border-2 border-green-300 text-black"
-					onClick={() =>
-						signIn("credentials", {
-							email: "test@example.com",
-							password: "password",
-						})
-					}
+		<div className="flex flex-col items-center justify-center min-h-screen">
+			<h1 className="text-7xl font-bold">Welcome to the TRPC Example!</h1>
+			<p className="mt-2 text-3xl">
+				This is a simple example of using TRPC with Next.js.
+			</p>
+			<p className="mt-6 text-2xl">TRPC Response from Nest.js:</p>
+			<p className="mt-4">Status: {status}</p>
+			<p className="mt-2">Timestamp: {timestamp}</p>
+
+			<p className="mt-6">
+				You can find the source code on{" "}
+				<a
+					href="https://github.com/RedEagle-dh/t3_nest_turborepo"
+					className="text-blue-500 hover:underline"
 				>
-					Login
-				</button>
-				<button
-					type="button"
-					className="bg-white border-2 border-green-300 text-black"
-					onClick={() =>
-						signOut({
-							redirect: true,
-							redirectTo: "/",
-						})
-					}
-				>
-					LogOut
-				</button>
-				{/* {session?.user.name} */}
-			</main>
+					GitHub
+				</a>
+			</p>
 		</div>
 	);
 }

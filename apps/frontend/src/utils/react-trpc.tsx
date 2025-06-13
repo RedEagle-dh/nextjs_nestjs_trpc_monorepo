@@ -1,16 +1,15 @@
 "use client";
-import type { AppRouter } from "@mono/trpc/index";
+import { api } from "@/utils/trpc";
+import type { AppRouter } from "@mono/database/contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-	TRPCLink,
-	createTRPCClient,
-	httpBatchLink,
-	retryLink,
-} from "@trpc/client";
+import { TRPCLink, httpBatchLink, retryLink } from "@trpc/client";
 import { observable } from "@trpc/server/observable";
 import { getSession, signOut } from "next-auth/react";
 import { useState } from "react";
-import { TRPCProvider } from "./trpc";
+
+const trpcApiUrl = process.env.NEXT_PUBLIC_BACKEND_URL
+	? `${process.env.NEXT_PUBLIC_BACKEND_URL}`
+	: "http://localhost:3001/trpc";
 
 function makeQueryClient() {
 	return new QueryClient({
@@ -73,7 +72,7 @@ const errorHandlingLink: TRPCLink<AppRouter> = () => {
 export function ReactTRPCProvider({ children }: { children: React.ReactNode }) {
 	const queryClient = getQueryClient();
 	const [trpcClient] = useState(() =>
-		createTRPCClient<AppRouter>({
+		api.createClient({
 			links: [
 				errorHandlingLink,
 				retryLink({
@@ -100,7 +99,7 @@ export function ReactTRPCProvider({ children }: { children: React.ReactNode }) {
 						Math.min(1000 * 2 ** attemptIndex, 30000),
 				}),
 				httpBatchLink({
-					url: "http://localhost:3001/trpc",
+					url: trpcApiUrl,
 					headers: async () => {
 						const baseHeaders: Record<string, string> = {};
 
@@ -118,10 +117,10 @@ export function ReactTRPCProvider({ children }: { children: React.ReactNode }) {
 		}),
 	);
 	return (
-		<QueryClientProvider client={queryClient}>
-			<TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+		<api.Provider client={trpcClient} queryClient={queryClient}>
+			<QueryClientProvider client={queryClient}>
 				{children}
-			</TRPCProvider>
-		</QueryClientProvider>
+			</QueryClientProvider>
+		</api.Provider>
 	);
 }

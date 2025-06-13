@@ -1,16 +1,18 @@
 import { auth } from "@/auth";
-import { AppRouter } from "@mono/trpc/index";
+import type { AppRouter } from "@mono/database/contract";
 import {
 	TRPCLink,
 	createTRPCClient,
 	httpBatchLink,
+	httpLink,
 	retryLink,
 } from "@trpc/client";
 import { TRPCClientError } from "@trpc/client";
 import { observable } from "@trpc/server/observable";
 
-const trpcApiUrl =
-	process.env.NEXT_PUBLIC_TRPC_API_URL || "http://localhost:3001/trpc";
+const trpcApiUrl = process.env.BACKEND_URL
+	? `${process.env.BACKEND_URL}/trpc`
+	: "http://localhost:3001/trpc";
 
 const errorHandlingLink: TRPCLink<AppRouter> = () => {
 	return ({ next, op }) => {
@@ -86,7 +88,7 @@ export const serverTrpcClient = createTRPCClient<AppRouter>({
 
 export const publicServerTrpcClient = createTRPCClient<AppRouter>({
 	links: [
-		httpBatchLink({
+		httpLink({
 			url: trpcApiUrl,
 		}),
 	],

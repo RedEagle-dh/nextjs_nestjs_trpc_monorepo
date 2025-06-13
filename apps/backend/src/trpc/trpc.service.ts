@@ -1,22 +1,24 @@
-import { TRPCContext } from "@mono/trpc/server";
+import { TRPCContext } from "@mono/database/";
 import { Injectable, OnModuleInit } from "@nestjs/common";
-import { AnyRouter } from "@trpc/server";
+import { AnyTRPCRouter } from "@trpc/server";
 import {
 	CreateHTTPContextOptions,
 	createHTTPHandler,
 } from "@trpc/server/adapters/standalone";
 import { Request, Response } from "express";
+import { DbService } from "src/db/db.service";
 import { AuthService } from "../auth/auth.service";
 import { MainTrpcRouterFactory } from "./trpc.router";
 
 @Injectable()
 export class TRPCService implements OnModuleInit {
-	private httpHandler!: ReturnType<typeof createHTTPHandler<AnyRouter>>;
-	private actualAppRouter!: AnyRouter;
+	private httpHandler!: ReturnType<typeof createHTTPHandler<AnyTRPCRouter>>;
+	private actualAppRouter!: AnyTRPCRouter;
 
 	constructor(
 		private readonly authService: AuthService,
 		private readonly routerFactory: MainTrpcRouterFactory,
+		private readonly dbService: DbService,
 	) {}
 
 	onModuleInit() {
@@ -29,9 +31,6 @@ export class TRPCService implements OnModuleInit {
 			console.error(
 				"⚠️ TRPCService: Actual appRouter from factory is missing or empty! Check MainTrpcRouterFactory logs.",
 			);
-			// Handle this case, e.g., by not setting up httpHandler or throwing an error
-			// For now, let's proceed but log a clear warning.
-			// This might happen if MainTrpcRouterFactory failed to find procedures.
 		} else {
 			console.log(
 				"✅ TRPCService: Initializing with actual appRouter from factory.",
@@ -66,7 +65,7 @@ export class TRPCService implements OnModuleInit {
 					}
 				}
 				// @ts-ignore
-				return { req, res, session };
+				return { req, res, session, prisma: this.dbService };
 			},
 			onError: ({ error, path, type, input, ctx }) => {
 				console.log(ctx);

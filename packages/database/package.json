@@ -1,0 +1,55 @@
+{
+	"name": "@mono/database",
+	"version": "1.0.0",
+	"description": "",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./zenstack": {
+			"types": "./dist/zenstack/zod/index.d.ts",
+			"default": "./dist/zenstack/zod/index.js"
+		},
+		"./contract": {
+			"types": "./dist/trpc-contract.d.ts",
+			"default": "./dist/trpc-contract.js"
+		},
+		"./trpc/react": {
+			"types": "./dist/generated/client/react.d.ts",
+			"default": "./dist/generated/client/react.js"
+		},
+		"./prisma/client": {
+			"types": "./dist/prisma/client.d.ts",
+			"default": "./dist/prisma/client.js"
+		},
+		"./prisma/*": {
+			"types": "./dist/prisma/*.d.ts",
+			"default": "./dist/prisma/*"
+		}
+	},
+	"scripts": {
+		"build": "pnpm generate && rm -rf dist tsconfig.tsbuildinfo && tsc -p tsconfig.json && cp -r src/zenstack dist/zenstack && mkdir -p dist/prisma && cp -r generated/* dist/prisma",
+		"generate": "zenstack generate --schema=./schema.zmodel -o ./src/zenstack",
+		"migrate": "prisma db push --schema=./prisma/schema.prisma"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"dependencies": {
+		"@trpc/react-query": "^11.3.1",
+		"@trpc/server": "^11.1.2",
+		"@zenstackhq/runtime": "2.9.4",
+		"@zenstackhq/trpc": "^2.15.1",
+		"zod": "^3.24.4",
+		"@prisma/client": "^6.8.2",
+		"prisma": "^6.8.2"
+	},
+	"devDependencies": {
+		"@types/express": "^5.0.2",
+		"typescript": "^5.8.3",
+		"zenstack": "^2.15.1"
+	}
+}

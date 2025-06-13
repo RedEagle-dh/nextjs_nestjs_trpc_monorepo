@@ -1,0 +1,51 @@
+generator client {
+    provider      = "prisma-client-js"
+    output        = "../generated"
+    binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+plugin trpc {
+  provider = '@zenstackhq/trpc'
+  output = './src/generated'
+  zodSchemasImport = "../../zenstack/zod"
+  generateClientHelpers = 'react'
+  version = 'v11'
+  importCreateRouter = "../../index"
+  importProcedure = "../../index"
+}
+
+enum Role {
+    ADMIN
+    USER
+}
+
+model User {
+    id      String   @id @default(cuid())
+    email   String   @unique
+    name    String
+    role    Role     @default(USER)
+    account Account?
+
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @updatedAt @map("updated_at")
+
+    @@map("users")
+}
+
+model Account {
+    id       String @id @default(cuid())
+    password String
+
+    userId String @unique @map("user_id")
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @updatedAt @map("updated_at")
+
+    @@map("accounts")
+}

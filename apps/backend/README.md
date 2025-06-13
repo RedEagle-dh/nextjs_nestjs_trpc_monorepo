@@ -5,7 +5,7 @@
 [circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
 [circleci-url]: https://circleci.com/gh/nestjs/nest
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
+  <p align="center">Ein progressives <a href="http://nodejs.org" target="_blank">Node.js</a> Framework zum Erstellen effizienter und skalierbarer serverseitiger Anwendungen.</p>
     <p align="center">
 <a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
 <a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
@@ -18,81 +18,137 @@
     <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
   <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
 </p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
 
-## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Projekt: Backend-Anwendung
 
-## Project setup
+### Beschreibung
+
+Dieses Projekt ist die Backend-Anwendung für [**BITTE PROJEKTNAMEN ODER ZWECK ERGÄNZEN**]. Es wurde mit dem [NestJS](https://github.com/nestjs/nest) Framework entwickelt und nutzt TypeScript.
+Das Backend stellt eine API bereit, die von verschiedenen Clients (z.B. dem Frontend) konsumiert werden kann.
+
+### Verwendete Technologien
+
+*   **Framework**: NestJS
+*   **Sprache**: TypeScript
+*   **API-Protokoll**: tRPC (für typsichere API-Aufrufe)
+*   **Datenbank-ORM/Toolkit**: Prisma & ZenStack (aus dem `@mono/database` Paket)
+*   **Authentifizierung**: JWT-basiert (JSON Web Tokens)
+*   **Caching**: Redis (optional, je nach Konfiguration)
+*   **Weitere wichtige Bibliotheken**:
+    *   `@nestjs/config` für Konfigurationsmanagement
+    *   `zod` für Schema-Validierung
+
+## Projektstruktur (Wichtige Module)
+
+Das Backend ist modular aufgebaut. Hier eine Übersicht der wichtigsten Module im `src`-Verzeichnis:
+
+*   `app.module.ts`: Das Hauptmodul der Anwendung.
+*   `auth/`: Verantwortlich für Authentifizierung (Login, Logout, Token-Management) und Autorisierung.
+*   `article/`: Beinhaltet Logik für Artikel und möglicherweise geplante Tasks (`tasks/`).
+*   `contact/`: Stellt Funktionalität für Kontaktformulare oder ähnliches bereit (tRPC-basiert).
+*   `db/`: Stellt einen Service für Datenbankinteraktionen bereit, wahrscheinlich eine Abstraktion über Prisma.
+*   `ftp/`: Modul für FTP-bezogene Operationen.
+*   `healthcheck/`: Stellt Endpunkte zur Überprüfung des Systemzustands bereit.
+*   `redis/`: Integration mit einem Redis-Server für Caching oder andere Zwecke.
+*   `trpc/`: Konfiguration und Bereitstellung der tRPC-Router und Prozeduren.
+*   `generator/`: Enthält Skripte zur Code-Generierung (z.B. tRPC-Verträge).
+
+## Konfiguration
+
+Die Anwendung wird über Umgebungsvariablen konfiguriert. Eine `.env`-Datei kann für die lokale Entwicklung verwendet werden. Wichtige Konfigurationsparameter umfassen:
+
+*   Datenbank-Verbindungszeichenfolge
+*   JWT-Secrets und Ablaufzeiten
+*   Redis-Verbindungsparameter
+*   Ports für den Server
+*   [**BITTE WEITERE WICHTIGE VARIABLEN ERGÄNZEN**]
+
+Die Konfiguration wird über den `ConfigService` von `@nestjs/config` geladen.
+
+## Datenbank
+
+Die Anwendung nutzt Prisma und ZenStack für den Datenzugriff, die im Paket `@mono/database` definiert sind.
+
+*   **Schema**: Das Datenbankschema wird in `packages/database/schema.zmodel` (ZenStack) und `packages/database/prisma/schema.prisma` (Prisma) definiert.
+*   **Migrationen**: Prisma Migrate wird für Datenbankschemamigrationen verwendet. Diese befinden sich in `packages/database/prisma/migrations/`.
+    *   Um Migrationen im `@mono/database` Paket zu erstellen oder anzuwenden, verwende die dort definierten Skripte (z.B. `pnpm run migrate` im Paket `database`).
+
+## API via tRPC
+
+Die API wird hauptsächlich über tRPC bereitgestellt. Dies ermöglicht typsichere Aufrufe zwischen Backend und Frontend.
+
+*   **Router und Prozeduren**: Werden in den jeweiligen Modulen definiert (z.B. `contact.trpc.ts`) und im `trpc`-Modul zusammengeführt.
+*   **Vertrag**: Der tRPC-Vertrag (Typdefinitionen für die API) wird generiert und kann vom Frontend importiert werden, um typsichere Client-Aufrufe zu ermöglichen. Das Skript `generate:trpc-contract` im `package.json` ist dafür zuständig.
+
+## Projekt einrichten
+
+Stelle sicher, dass du `pnpm` als Paketmanager verwendest.
 
 ```bash
+# Installiere alle Abhängigkeiten im Monorepo-Root
 $ pnpm install
 ```
 
-## Compile and run the project
+## Anwendung kompilieren und starten
 
 ```bash
-# development
-$ pnpm run start
-
-# watch mode
+# Entwicklung (startet die Anwendung mit Watch-Modus)
 $ pnpm run start:dev
 
-# production mode
+# Alternativ, wenn Abhängigkeiten wie @mono/trpc auch im Watch-Modus laufen sollen:
+$ pnpm run start:dev:deps
+
+# Build für die Produktion erstellen
+$ pnpm run build
+
+# Produktion (startet die gebaute Anwendung)
 $ pnpm run start:prod
+
+# Debug-Modus mit Watch
+$ pnpm run start:debug
 ```
 
-## Run tests
+Das Skript `start:dev` führt auch `pnpm generate:trpc-contract` aus, um sicherzustellen, dass der tRPC-Vertrag aktuell ist.
+
+## Tests ausführen
 
 ```bash
-# unit tests
+# Unit-Tests
 $ pnpm run test
 
-# e2e tests
+# E2E-Tests (End-to-End)
 $ pnpm run test:e2e
 
-# test coverage
+# Test-Coverage anzeigen
 $ pnpm run test:cov
 ```
 
 ## Deployment
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+[**BITTE SPEZIFISCHE DEPLOYMENT-ANWEISUNGEN FÜR DIESES PROJEKT ERGÄNZEN**]
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Die Standard-NestJS-Dokumentation zum [Deployment](https://docs.nestjs.com/deployment) bietet allgemeine Hinweise.
 
-```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
-```
+## Weitere Ressourcen
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+*   [NestJS Dokumentation](https://docs.nestjs.com)
+*   [tRPC Dokumentation](https://trpc.io/docs)
+*   [Prisma Dokumentation](https://www.prisma.io/docs/)
+*   [ZenStack Dokumentation](https://zenstack.dev/docs)
 
 ## Support
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+Nest ist ein MIT-lizenziertes Open-Source-Projekt. Es kann dank der Sponsoren und der Unterstützung durch die großartigen Unterstützer wachsen. Wenn du dich ihnen anschließen möchtest, lies bitte [hier mehr](https://docs.nestjs.com/support).
 
-## Stay in touch
+## Kontakt bleiben
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+*   Autor - [Kamil Myśliwiec](https://twitter.com/kammysliwiec) (Ursprünglicher NestJS Autor)
+*   Projektverantwortliche(r) - [**DEIN NAME/TEAMNAME HIER EINTRAGEN**]
+*   Website - [https://nestjs.com](https://nestjs.com/)
+*   Twitter - [@nestframework](https://twitter.com/nestframework)
 
-## License
+## Lizenz
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Nest ist [MIT lizenziert](https://github.com/nestjs/nest/blob/master/LICENSE).
+[**BITTE ÜBERPRÜFEN, OB DIE LIZENZ FÜR DEIN PROJEKT KORREKT IST ODER ANGEPASST WERDEN MUSS**]

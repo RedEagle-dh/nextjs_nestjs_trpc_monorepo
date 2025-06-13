@@ -1,5 +1,5 @@
-import * as path from "node:path";
-import { TrpcContractGenerator } from "./code-generator"; // Angepasster Importpfad
+import path from "node:path";
+import { TrpcContractGenerator } from "./code-generator";
 
 async function run() {
 	const generator = new TrpcContractGenerator({
@@ -7,9 +7,10 @@ async function run() {
 		backendTsConfig: path.resolve(__dirname, "../../tsconfig.json"),
 		outputContractFile: path.resolve(
 			__dirname,
-			"../../../../packages/trpc/trpc-contract.ts",
+			"../../../../packages/database/src/trpc-contract.ts",
 		),
-		trpcContextImportPath: "./server.ts", // Relativ zur generierten Datei
+		trpcContextImportPath: ".",
+		zenstackRouterImportPath: "./generated/routers",
 	});
 	await generator.generateContract();
 }

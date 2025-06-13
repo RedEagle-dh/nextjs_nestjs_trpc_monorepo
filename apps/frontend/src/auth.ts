@@ -8,33 +8,6 @@ import { TRPCClientError, publicServerTrpcClient } from "./utils/server-trpc";
 
 const TOKEN_REFRESH_BUFFER_SECONDS = 15;
 
-/* class Mutex {
-	private queue: Array<() => void> = [];
-	private locked = false;
-
-	async lock(): Promise<void> {
-		return new Promise((resolve) => {
-			if (this.locked) {
-				this.queue.push(resolve);
-			} else {
-				this.locked = true;
-				resolve();
-			}
-		});
-	}
-
-	unlock(): void {
-		if (this.queue.length > 0) {
-			const nextResolve = this.queue.shift();
-			if (nextResolve) nextResolve();
-		} else {
-			this.locked = false;
-		}
-	}
-}
-
-const refreshMutex = new Mutex(); */
-
 export const config: NextAuthConfig = {
 	providers: [
 		Credentials({

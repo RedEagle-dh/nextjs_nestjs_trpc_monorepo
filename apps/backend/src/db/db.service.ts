@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 
-import { PrismaClient } from "@mono/prisma/generated";
+import { PrismaClient } from "@mono/database/prisma/client";
 
 @Injectable()
 export class DbService

@@ -39,3 +39,7 @@ yarn-error.log*
 generated/
 
 .idea/
+data_test/
+tmp/
+zenstack/
+tsconfig.tsbuildinfo

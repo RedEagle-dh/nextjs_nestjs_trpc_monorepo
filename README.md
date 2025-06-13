@@ -88,14 +88,19 @@ t3_nest_turborepo/
 │       │       └── page.tsx          # Example component with tRPC usage
 │       └── package.json
 ├── packages/
-│   ├── trpc/           # Contract Package (npm: @mono/trpc)
-│   │   ├── server.ts               # TRPCContext definition
-│   │   ├── trpc-contract.ts        # GENERATED AppRouter for frontend types
-│   │   └── package.json
-│   ├── prisma/         # Database Schema & Client
-│   │   ├── schema.prisma
-│   │   └── package.json
-│   └── ui/             # (Optional) Shared UI components
+│   └── database/                       # Contract and DB Package (npm: @mono/database)
+│       ├── src/                        
+│       │   ├── generated/              # GENERATED zenstack routers and types
+│       │   ├── zenstack/               # GENERATED zod schemas
+│       │   ├── context.ts              # TRPCContext definition
+│       │   ├── generated.provider.ts   # Generated Provider definition
+│       │   ├── index.ts                # Barrel file
+│       │   ├── trpc-contract.ts        # GENERATED AppRouter for frontend types
+│       │   └── trpc.ts                 # GENERATED AppRouter for frontend types
+│       ├── generated/                  # GENERATED prisma/zenstack client
+│       ├── prisma/                     
+│       │   └── schema.prisma           # GENERATED prisma.schema
+│       └── package.json
 ├── package.json        # Root package.json
 ├── pnpm-workspace.yaml
 ├── turbo.json
@@ -256,9 +261,9 @@ export default function HomePage() {
 
 ```bash
 # Development
-pnpm dev              # Start all apps in development mode
-pnpm dev:backend      # Start only backend in watch mode  
-pnpm dev:frontend     # Start only frontend in development
+pnpm --filter=frontend dev               # Start only frontend in watch mode 
+pnpm --filter=backend start:dev          # Start only backend in watch mode  
+pnpm dev                                 # Start all apps in development mode
 
 # Building
 pnpm build            # Build all packages and applications
@@ -266,16 +271,17 @@ pnpm build:backend    # Build only backend
 pnpm build:frontend   # Build only frontend
 
 # Code Quality
-pnpm lint             # Run linting (ESLint, Biome)
-pnpm format           # Format code across entire project
-pnpm type-check       # TypeScript type checking
+pnpm clean            # Reset project, removing all temporary and generated files and folders
+pnpm check            # Run linter (biomejs)
+pnpm check:write            # Run linter with fix permissions (biomejs)
 
 # tRPC Contract Generation
 pnpm --filter backend generate:trpc-contract
 
 # Database (if using Prisma)
-pnpm --filter @mono/prisma generate    # Generate Prisma client
-pnpm --filter @mono/prisma db:push     # Push schema changes to database
+pnpm --filter @mono/database build    # Build the package so the frontend and backend can use it
+pnpm --filter @mono/database generate    # Generate Prisma client and zenstack trpc routers
+pnpm --filter @mono/database migrate    # Migrate Prisma schema to the database
 ```
 
 ## 🏗️ Build Process
@@ -292,25 +298,60 @@ Turborepo ensures the correct build order:
 ### Docker
 
 ```bash
-# Build production image
+# Start databases with docker compose
+docker compose up -d
+
+# Build backend production image
 docker build -f apps/backend/Dockerfile -t monorepo-backend .
 
-# Run with docker-compose
-docker-compose up --build
+# Build frontend production image
+docker build -f apps/frontend/Dockerfile -t monorepo-frontend .
 ```
 
 ### Manual Deployment
 
-```bash
-# Build for production
-pnpm build
+To build and run the project manually for production, follow these steps in the exact order listed below. The sequence is critical due to the dependencies between the packages.
 
-# Start backend (production)
-cd apps/backend && node dist/main.js
+#### Build Process
 
-# Start frontend (production) 
-cd apps/frontend && npm start
-```
+1.  **Generate the tRPC Contract:**
+    ```bash
+    pnpm --filter=backend generate:trpc-contract
+    ```
+
+2.  **Generate Database Clients & Routers:**
+    ```bash
+    pnpm --filter=@mono/database generate
+    ```
+
+3.  **Build the Database Package:**
+    ```bash
+    pnpm --filter=@mono/database build
+    ```
+
+4.  **Build the Backend Application:**
+    ```bash
+    pnpm --filter=backend build
+    ```
+
+5.  **Build the Frontend Application:**
+    ```bash
+    pnpm --filter=frontend build
+    ```
+
+#### Run in Production Mode
+
+After the build is complete, start the servers. You will need two separate terminal sessions.
+
+-   **Start the Backend:**
+    ```bash
+    pnpm --filter=backend start
+    ```
+
+-   **Start the Frontend:**
+    ```bash
+    pnpm --filter=frontend start
+    ```
 
 ## 🛠️ Tech Stack
 

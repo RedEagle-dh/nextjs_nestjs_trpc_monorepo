@@ -1,9 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { TRPCContext } from "@mono/trpc/server";
+import { TRPCContext } from "@mono/database";
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { TRPCError } from "@trpc/server";
-import * as jwt from "jsonwebtoken";
+import jwt from "jsonwebtoken";
 import { DbService } from "src/db/db.service";
 import { RedisService } from "src/redis/redis.service";
 import {

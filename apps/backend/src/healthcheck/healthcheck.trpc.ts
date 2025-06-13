@@ -2,8 +2,8 @@ import { Injectable } from "@nestjs/common";
 import { TrpcProcedure, TrpcRouter } from "src/trpc/decorators";
 import { z } from "zod";
 @Injectable()
-@TrpcRouter({ domain: "user" })
-export class UserTrpcRouter {
+@TrpcRouter({ domain: "healthcheck" })
+export class HealtchcheckTrpcRouter {
 	@TrpcProcedure({
 		inputType: z.string(),
 		outputType: z.object({
@@ -11,7 +11,7 @@ export class UserTrpcRouter {
 			timestamp: z.string(),
 		}),
 		type: "query",
-		isProtected: true,
+		isProtected: false,
 	})
 	async getHealthcheck() {
 		return {

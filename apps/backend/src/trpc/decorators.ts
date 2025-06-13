@@ -1,16 +1,14 @@
-import type { TRPCContext } from "@mono/trpc/server";
+import type { TRPCContext } from "@mono/database";
 import { ZodSchema } from "zod";
 
 export const TRPC_ROUTER_KEY = Symbol("TRPC_ROUTER_KEY");
 export const TRPC_PROCEDURE_KEY = Symbol("TRPC_PROCEDURE_KEY");
-export const TRPC_MIDDLEWARE_KEY = Symbol("TRPC_MIDDLEWARE_KEY"); // Beibehalten, falls du es noch verwendest
+export const TRPC_MIDDLEWARE_KEY = Symbol("TRPC_MIDDLEWARE_KEY");
 
-// TrpcRouterMetadata bleibt gleich
 export interface TrpcRouterMetadata {
 	domain?: string;
 }
 
-// TrpcProcedureOptions mit klareren Generic-Namen
 export interface TrpcProcedureOptions<
 	TInputSchema extends ZodSchema | undefined = undefined,
 	TOutputSchema extends ZodSchema | undefined = undefined,
@@ -19,16 +17,12 @@ export interface TrpcProcedureOptions<
 	outputType?: TOutputSchema;
 	type: "query" | "mutation";
 	isProtected?: boolean;
-	middlewares?: TrpcMiddlewareDefinition[]; // Beibehalten
+	middlewares?: TrpcMiddlewareDefinition[];
 }
 
-// NEU: Helper-Typ für die Parameter der dekorierten Methode
-// Leitet den Typ des 'input'-Parameters aus dem Zod-Schema ab.
 export type TrpcProcedureInput<TInputSchema extends ZodSchema | undefined> =
 	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
 	TInputSchema extends ZodSchema<infer T, any, any> ? T : undefined;
-// Wenn inputType nicht definiert ist, ist input 'undefined'.
-// Alternativ könntest du 'unknown' verwenden, wenn das für deinen Flow besser passt.
 
 export type TrpcProcedureParameters<
 	TInputSchema extends ZodSchema | undefined,
@@ -66,8 +60,8 @@ export function TrpcProcedure<
 
 		const procedureDefinitionToStore = {
 			methodName: propertyKey,
-			options: optionsArgument, // Das gesamte options-Objekt speichern
-			implementation: descriptor.value, // Die ursprüngliche Methodenimplementierung
+			options: optionsArgument,
+			implementation: descriptor.value,
 		};
 
 		procedures.push(procedureDefinitionToStore);
@@ -79,7 +73,6 @@ export function TrpcProcedure<
 	};
 }
 
-// ----- Middleware-Definitionen (unverändert von deinem Code) -----
 export interface TrpcMiddlewareFunction {
 	// biome-ignore lint/style/useShorthandFunctionType: <explanation>
 	(opts: {

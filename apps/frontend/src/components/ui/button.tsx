@@ -15,13 +15,17 @@ const buttonVariants = cva(
 					"bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
 				outline:
 					"border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50",
-				secondary:
-					"bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80",
 				ghost: "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
 				link: "text-primary underline-offset-4 hover:underline",
+				secondary:
+					"bg-white border border-stone-300 border-opacity-5 text-secondary-foreground hover:bg-stone-200",
+				brand: "bg-brand text-primary-foreground hover:bg-stone-800",
+				"brand-secondary":
+					"bg-brand-secondary text-primary-foreground hover:bg-stone-800",
 			},
 			size: {
 				default: "h-9 px-4 py-2 has-[>svg]:px-3",
+				md: "px-4 py-3 has-[>svg]:px-4 rounded-lg",
 				sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
 				lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
 				icon: "size-9",
@@ -29,7 +33,7 @@ const buttonVariants = cva(
 		},
 		defaultVariants: {
 			variant: "default",
-			size: "default",
+			size: "md",
 		},
 	},
 );
@@ -55,4 +59,9 @@ function Button({
 	);
 }
 
-export { Button, buttonVariants };
+type ButtonProps = React.ComponentProps<"button"> &
+	VariantProps<typeof buttonVariants> & {
+		asChild?: boolean;
+	};
+
+export { Button, buttonVariants, type ButtonProps };

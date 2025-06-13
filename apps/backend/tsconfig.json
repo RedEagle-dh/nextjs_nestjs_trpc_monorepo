@@ -1,6 +1,7 @@
 {
 	"compilerOptions": {
-		"module": "commonjs",
+		"module": "nodenext",
+		"moduleResolution": "nodenext",
 		"declaration": true,
 		"removeComments": true,
 		"emitDecoratorMetadata": true,
@@ -20,16 +21,10 @@
 		"strictBindCallApply": false,
 		"noFallthroughCasesInSwitch": false,
 		"tsBuildInfoFile": "dist/.tsbuildinfo",
-		"paths": {
-			"@mono/trpc/*": ["../../packages/trpc/dist/*"],
-			"@mono/trpc": ["../../packages/trpc/dist/index"]
-		}
+		"strict": true,
+		"esModuleInterop": true
 	},
+	"references": [{ "path": "../../packages/database" }],
 	"include": ["src/**/*"],
-	"exclude": ["node_modules", "dist"],
-	"references": [
-		{
-			"path": "../../packages/trpc"
-		}
-	]
+	"exclude": ["node_modules", "dist"]
 }
