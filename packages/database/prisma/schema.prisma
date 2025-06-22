@@ -32,12 +32,14 @@ model User {
 }
 
 model Account {
-  id        String   @id() @default(cuid())
-  password  String
-  userId    String   @unique() @map("user_id")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt() @map("updated_at")
+  id         String   @id() @default(cuid())
+  password   String
+  userId     String   @unique() @map("user_id")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  totpSecret String?  @map("totp_secret")
+  isVerified Boolean  @default(false) @map("is_verified")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt() @map("updated_at")
 
   @@map("accounts")
 }

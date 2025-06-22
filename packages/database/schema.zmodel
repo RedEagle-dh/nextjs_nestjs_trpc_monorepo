@@ -10,13 +10,13 @@ datasource db {
 }
 
 plugin trpc {
-  provider = '@zenstackhq/trpc'
-  output = './src/generated'
-  zodSchemasImport = "../../zenstack/zod"
-  generateClientHelpers = 'react'
-  version = 'v11'
-  importCreateRouter = "../../index"
-  importProcedure = "../../index"
+    provider = '@zenstackhq/trpc'
+    output = './src/generated'
+    zodSchemasImport = "../../zenstack/zod"
+    generateClientHelpers = 'react'
+    version = 'v11'
+    importCreateRouter = "../../index"
+    importProcedure = "../../index"
 }
 
 enum Role {
@@ -25,11 +25,11 @@ enum Role {
 }
 
 model User {
-    id      String   @id @default(cuid())
-    email   String   @unique
-    name    String
-    role    Role     @default(USER)
-    account Account?
+    id        String   @id @default(cuid())
+    email     String   @unique
+    name      String
+    role      Role     @default(USER)
+    account   Account?
 
     createdAt DateTime @default(now()) @map("created_at")
     updatedAt DateTime @updatedAt @map("updated_at")
@@ -38,14 +38,16 @@ model User {
 }
 
 model Account {
-    id       String @id @default(cuid())
-    password String
+    id         String   @id @default(cuid())
+    password   String
 
-    userId String @unique @map("user_id")
-    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+    userId     String   @unique @map("user_id")
+    user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    createdAt DateTime @default(now()) @map("created_at")
-    updatedAt DateTime @updatedAt @map("updated_at")
+    totpSecret String?  @map("totp_secret")
+    isVerified Boolean  @default(false) @map("is_verified")
+    createdAt  DateTime @default(now()) @map("created_at")
+    updatedAt  DateTime @updatedAt @map("updated_at")
 
     @@map("accounts")
 }

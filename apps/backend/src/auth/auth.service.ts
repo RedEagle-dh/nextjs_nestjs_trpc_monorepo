@@ -1,69 +1,50 @@
 import { randomBytes } from "node:crypto";
 import { TRPCContext } from "@mono/database";
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { TRPCError } from "@trpc/server";
 import jwt from "jsonwebtoken";
+import { authenticator } from "otplib";
+import { toDataURL } from "qrcode";
+import { CryptoService } from "src/crypto/crypto.service";
 import { DbService } from "src/db/db.service";
 import { RedisService } from "src/redis/redis.service";
-import {
-	TrpcProcedure,
-	TrpcProcedureParameters,
-	TrpcRouter,
-} from "src/trpc/decorators";
+import { TrpcProcedureParameters } from "src/trpc/decorators";
 import { z } from "zod";
-
-export type AccessTokenPayload = {
-	userId: string;
-	email: string;
-	role: string;
-};
-
-const loginInputSchema = z.object({
-	email: z.string().email(),
-	password: z.string(),
-});
-
-const logoutInputSchema = z.object({
-	userId: z.string(),
-	accessToken: z.string(),
-	refreshToken: z.string(),
-});
-
-const tokenOutputSchema = z.object({
-	user: z.object({
-		id: z.string(),
-		email: z.string(),
-		name: z.string(),
-		role: z.string(),
-	}),
-	accessToken: z.string(),
-	refreshToken: z.string(),
-	accessTokenExpiresAt: z.number(),
-});
-
-const refreshTokenInputSchema = z.object({
-	userId: z.string(),
-	accessToken: z.string().optional(),
-	refreshToken: z.string(),
-});
+import {
+	AccessTokenPayload,
+	loginInputSchema,
+	logoutInputSchema,
+	refreshTokenInputSchema,
+	tokenOutputSchema,
+} from "./schema";
 
 @Injectable()
-@TrpcRouter({ domain: "auth" })
 export class AuthService {
+	private readonly logger = new Logger(AuthService.name);
 	private readonly jwtSecret: string;
 	private readonly accessTokenExpiresInString: string;
 	private readonly accessTokenTtlSeconds: number;
 	private readonly refreshTokenTtlSeconds: number;
+	private readonly ENCRYPTION_KEY: string;
 
 	private readonly REFRESH_TOKEN_REDIS_PREFIX = "refreshtoken:";
 	private readonly ACCESS_TOKEN_REDIS_PREFIX = "accesstoken:";
+	private readonly VERIFY_SESSION_PREFIX = "verify-session:";
 
 	constructor(
 		private readonly dbService: DbService,
 		private readonly configService: ConfigService,
 		private readonly redisService: RedisService,
+		private readonly cryptoService: CryptoService,
 	) {
+		const encriptionKey = this.configService.get<string>("ENCRYPTION_KEY");
+		if (!encriptionKey) {
+			throw new Error("ENCRYPTION_KEY not set in configuration.");
+		}
+
+		this.ENCRYPTION_KEY = encriptionKey;
+
 		this.jwtSecret = this.configService.get<string>("JWT_SECRET") as string;
 		this.accessTokenExpiresInString =
 			this.configService.get<string>("ACCESS_TOKEN_EXPIRES_IN") || "1h";
@@ -164,11 +145,6 @@ export class AuthService {
 		}
 	}
 
-	// --- Refresh Token Methoden ---
-	private generateOpaqueRefreshToken(): string {
-		return randomBytes(40).toString("hex");
-	}
-
 	private async storeTokensInRedis({
 		accessToken,
 		refreshToken,
@@ -216,23 +192,13 @@ export class AuthService {
 		return userId;
 	}
 
-	// --- tRPC Prozeduren ---
-	@TrpcProcedure({
-		type: "mutation",
-		inputType: loginInputSchema,
-		outputType: tokenOutputSchema,
-		isProtected: false,
-	})
 	async login(
 		params: TrpcProcedureParameters<typeof loginInputSchema>,
 	): Promise<z.infer<typeof tokenOutputSchema>> {
+		console.log("Calling login service");
 		const { input } = params;
 		const user = await this.dbService.user.findUnique({
 			where: { email: input.email },
-		});
-
-		const account = await this.dbService.account.findUnique({
-			where: { userId: user?.id },
 		});
 
 		if (!user) {
@@ -242,6 +208,10 @@ export class AuthService {
 			});
 		}
 
+		const account = await this.dbService.account.findUnique({
+			where: { userId: user?.id },
+		});
+
 		if (!account) {
 			throw new TRPCError({
 				code: "NOT_FOUND",
@@ -249,8 +219,20 @@ export class AuthService {
 			});
 		}
 
-		// TODO : Passwort-Hashing und -Verifizierung
-		if (account.password !== input.password) {
+		if (!account.isVerified) {
+			throw new TRPCError({
+				code: "FORBIDDEN",
+				message:
+					"Dein Account ist noch nicht verifiziert. Bitte überprüfe deine E-Mails.",
+			});
+		}
+
+		const passwordValid = await this.cryptoService.verifyPassword(
+			input.password,
+			account.password,
+		);
+
+		if (passwordValid === false) {
 			throw new TRPCError({
 				code: "UNAUTHORIZED",
 				message: "Invalid password",
@@ -260,17 +242,12 @@ export class AuthService {
 		const accessTokenPayload: AccessTokenPayload = {
 			userId: user.id,
 			email: user.email,
+			name: user.name,
 			role: user.role,
 		};
-		const { token: accessToken, expiresAt: accessTokenExpiresAt } =
-			this.generateAccessToken(accessTokenPayload);
-		const refreshToken = this.generateOpaqueRefreshToken();
 
-		await this.storeTokensInRedis({
-			accessToken,
-			refreshToken,
-			userId: user.id,
-		});
+		const { accessToken, accessTokenExpiresAt, refreshToken } =
+			this.generateAndStoreAccessTokens(accessTokenPayload);
 
 		return {
 			user: {
@@ -280,19 +257,11 @@ export class AuthService {
 				role: user.role,
 			},
 			accessToken,
-			refreshToken: refreshToken,
+			refreshToken,
 			accessTokenExpiresAt,
 		};
 	}
 
-	@TrpcProcedure({
-		type: "mutation",
-		inputType: logoutInputSchema,
-		outputType: z.object({
-			status: z.number(),
-		}),
-		isProtected: false,
-	})
 	async logout({
 		input,
 		ctx,
@@ -309,25 +278,131 @@ export class AuthService {
 		};
 	}
 
-	@TrpcProcedure({
-		type: "mutation",
-		inputType: refreshTokenInputSchema,
-		outputType: tokenOutputSchema,
-		isProtected: false,
-	})
-	async refreshToken(
-		params: TrpcProcedureParameters<typeof refreshTokenInputSchema>,
-	): Promise<z.infer<typeof tokenOutputSchema>> {
-		const { input } = params;
-		const oldRefreshToken = input.refreshToken;
+	private sleep(ms: number): Promise<void> {
+		return new Promise((resolve) => setTimeout(resolve, ms));
+	}
 
-		const existingHelper = await this.redisService.getJson(
-			`refreshhelper:${oldRefreshToken}`,
+	async refreshToken(params): Promise<z.infer<typeof tokenOutputSchema>> {
+		const startTime = Date.now();
+		const { input } = params;
+		const lockKey = `token_refresh_lock:${input.userId}`;
+		const resultKey = `refresh_result:${input.userId}:${input.refreshToken}`;
+
+		this.logger.debug(
+			`[${input.userId}] Attempting to acquire lock with token ${input.refreshToken.substring(0, 10)}...`,
 		);
 
-		if (existingHelper) {
-			return existingHelper;
+		const existingResult = await this.redisService.getJson(resultKey);
+		if (existingResult && this.isResultFresh(existingResult)) {
+			this.logger.debug(
+				`[${input.userId}] Returning cached result for this specific token (age: ${Date.now() - existingResult.timestamp}ms)`,
+			);
+			const { timestamp, ...cleanResult } = existingResult;
+			return cleanResult;
 		}
+
+		const lockAcquired = await this.redisService.set(
+			lockKey,
+			input.refreshToken,
+			10,
+			"NX",
+		);
+
+		if (!lockAcquired) {
+			return await this.waitForRefreshResult(
+				input.userId,
+				input.refreshToken,
+			);
+		}
+
+		try {
+			const doubleCheckResult =
+				await this.redisService.getJson(resultKey);
+			if (doubleCheckResult && this.isResultFresh(doubleCheckResult)) {
+				const { timestamp, ...cleanResult } = doubleCheckResult;
+				return cleanResult;
+			}
+
+			const result = await this.performActualRefresh(params);
+
+			const resultWithTimestamp = {
+				...result,
+				timestamp: Date.now(),
+			};
+
+			await this.redisService.setJson(resultKey, resultWithTimestamp, 5);
+
+			return result;
+		} catch (error) {
+			this.logger.error(
+				`[${input.userId}] Token refresh failed after ${Date.now() - startTime}ms`,
+				error,
+			);
+			throw error;
+		} finally {
+			this.logger.debug(
+				`[${input.userId}] Releasing lock after ${Date.now() - startTime}ms`,
+			);
+			const lockValue = await this.redisService.get(lockKey);
+			if (lockValue === input.refreshToken) {
+				await this.redisService.del(lockKey);
+				this.logger.debug(`[${input.userId}] Lock released`);
+			} else {
+				this.logger.debug(
+					`[${input.userId}] Lock already taken by different token, not releasing`,
+				);
+			}
+		}
+	}
+
+	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+	private isResultFresh(result: any): boolean {
+		if (!result || !result.timestamp) return false;
+
+		const age = Date.now() - result.timestamp;
+		const isFresh = age < 5000; // 5 Sekunden
+
+		return isFresh;
+	}
+
+	private async waitForRefreshResult(
+		userId: string,
+		refreshToken: string,
+		// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+	): Promise<any> {
+		const resultKey = `refresh_result:${userId}:${refreshToken}`;
+
+		this.logger.debug(
+			`[${userId}] Waiting for refresh result for specific token`,
+		);
+
+		for (let i = 0; i < 30; i++) {
+			await this.sleep(200);
+
+			const result = await this.redisService.getJson(resultKey);
+			if (result && this.isResultFresh(result)) {
+				this.logger.debug(
+					`[${userId}] Found cached result after ${i * 200}ms wait`,
+				);
+				const { timestamp, ...cleanResult } = result;
+				return cleanResult;
+			}
+		}
+
+		throw new TRPCError({
+			code: "INTERNAL_SERVER_ERROR",
+			message: "Token refresh timeout - please try again",
+		});
+	}
+
+	private async performActualRefresh(
+		params: TrpcProcedureParameters<typeof refreshTokenInputSchema>,
+	) {
+		this.logger.debug(
+			`Performing actual token refresh for user ${params.input.userId} with refresh token ${params.input.refreshToken}`,
+		);
+		const { input } = params;
+		const oldRefreshToken = input.refreshToken;
 
 		const userId = await this.validateAndConsumeTokensFromRedis(
 			oldRefreshToken,
@@ -357,43 +432,184 @@ export class AuthService {
 		const accessTokenPayload = {
 			userId: user.id,
 			email: user.email,
+			name: user.name,
 			role: user.role,
 		};
 
-		const { token: newAccessToken, expiresAt: newAccessTokenExpiresAt } =
-			this.generateAccessToken(accessTokenPayload);
-		const newRefreshToken = this.generateOpaqueRefreshToken();
-		await this.storeTokensInRedis({
-			accessToken: newAccessToken,
-			refreshToken: newRefreshToken,
-			userId: user.id,
-		});
-		await this.redisService.setJson(
-			`refreshhelper:${oldRefreshToken}`,
-			{
-				user: {
-					id: user.id,
-					email: user.email,
-					name: user.name,
-					role: user.role,
-				},
-				accessToken: newAccessToken,
-				refreshToken: newRefreshToken,
-				accessTokenExpiresAt: newAccessTokenExpiresAt,
-			},
-			2,
-		);
+		const { accessToken, accessTokenExpiresAt, refreshToken } =
+			this.generateAndStoreAccessTokens(accessTokenPayload);
 
-		return {
+		const data = {
 			user: {
 				id: user.id,
 				email: user.email,
 				name: user.name,
 				role: user.role,
 			},
-			accessToken: newAccessToken,
-			refreshToken: newRefreshToken,
-			accessTokenExpiresAt: newAccessTokenExpiresAt,
+			accessToken,
+			oldRefreshToken,
+			refreshToken,
+			accessTokenExpiresAt,
 		};
+
+		return data;
+	}
+
+	generateAndStoreAccessTokens(payload: AccessTokenPayload): {
+		accessToken: string;
+		refreshToken: string;
+		accessTokenExpiresAt: number;
+	} {
+		const { token: accessToken, expiresAt: accessTokenExpiresAt } =
+			this.generateAccessToken(payload);
+		const refreshToken = this.cryptoService.generateOpaqueRefreshToken();
+
+		// Das Speichern in Redis geschieht asynchron im Hintergrund.
+		// Wir müssen nicht darauf warten, um die Tokens an den User zurückzugeben.
+		this.storeTokensInRedis({
+			accessToken,
+			refreshToken,
+			userId: payload.userId,
+		}).catch((err) => {
+			this.logger.error(
+				`Failed to store tokens in Redis for user ${payload.userId}`,
+				err,
+			);
+		});
+
+		return {
+			accessToken,
+			refreshToken,
+			accessTokenExpiresAt,
+		};
+	}
+
+	async generateAndStoreOtp(user: {
+		id: string;
+		email: string;
+		role: string;
+	}) {
+		try {
+			const otp = await this.generateOtpCode();
+			const verificationId = randomBytes(24).toString("hex");
+			const redisKey = `${this.VERIFY_SESSION_PREFIX}${verificationId}`;
+			const TTL = 60 * 15;
+			await this.redisService.setJson(
+				redisKey,
+				{
+					otp,
+					userId: user.id,
+				},
+				TTL,
+			);
+			return {
+				otp,
+				verificationId,
+			};
+		} catch (error) {
+			this.logger.error("Error generating and storing OTP Token", error);
+			return null;
+		}
+	}
+
+	async generateOtpCode(): Promise<string> {
+		const otpCode = randomBytes(3).toString("hex").toUpperCase();
+		return otpCode;
+	}
+
+	async generateTwoFactorSecret(user: { id: string; email: string }) {
+		// 1. Ein neues Geheimnis generieren
+		const secret = authenticator.generateSecret();
+
+		// 2. Das Geheimnis verschlüsseln, bevor es gespeichert wird
+		const encryptedSecret = this.cryptoService.encryptData(
+			secret,
+			this.ENCRYPTION_KEY,
+		);
+
+		// 3. Das verschlüsselte Geheimnis in der DB speichern
+		await this.dbService.account.update({
+			where: { userId: user.id },
+			data: { totpSecret: encryptedSecret },
+		});
+
+		// 4. Die URL für den QR-Code erstellen
+		const otpauthUrl = authenticator.keyuri(
+			user.email,
+			"N2 StickStoff",
+			secret,
+		);
+
+		return {
+			secret,
+			otpauthUrl,
+		};
+	}
+
+	async isTwoFactorCodeValid(
+		twoFactorCode: string,
+		userId: string,
+	): Promise<boolean> {
+		const user = await this.dbService.account.findUnique({
+			where: { userId: userId },
+		});
+
+		if (!user || !user.totpSecret) {
+			return false;
+		}
+
+		const decryptedSecret = this.cryptoService.decryptData(
+			user.totpSecret,
+			this.ENCRYPTION_KEY,
+		);
+
+		if (!decryptedSecret) {
+			return false;
+		}
+
+		// 2. Den Code mit otplib verifizieren
+		return authenticator.verify({
+			token: twoFactorCode,
+			secret: decryptedSecret,
+		});
+	}
+
+	async generateQrCodeDataURL(otpAuthUrl: string): Promise<string> {
+		return toDataURL(otpAuthUrl);
+	}
+
+	public async verifyOtpAndActivateAccount(input: {
+		verificationId: string;
+		otp: string;
+	}): Promise<{ message: string }> {
+		const redisKey = `${this.VERIFY_SESSION_PREFIX}${input.verificationId}`;
+		const sessionData = await this.redisService.getJson<{
+			otp: string;
+			userId: string;
+		}>(redisKey);
+
+		if (!sessionData || sessionData.otp !== input.otp) {
+			throw new TRPCError({
+				code: "BAD_REQUEST",
+				message: "Ungültiger oder abgelaufener Code.",
+			});
+		}
+
+		await this.dbService.account.update({
+			where: { userId: sessionData.userId },
+			data: { isVerified: true },
+		});
+
+		await this.redisService.del(redisKey);
+
+		return { message: "Account erfolgreich aktiviert." };
+	}
+
+	public async checkVerificationId(
+		verificationId: string,
+	): Promise<{ isValid: boolean }> {
+		const redisKey = `${this.VERIFY_SESSION_PREFIX}${verificationId}`;
+		const exists = await this.redisService.exists(redisKey);
+		return { isValid: exists === 1 };
 	}
 }
