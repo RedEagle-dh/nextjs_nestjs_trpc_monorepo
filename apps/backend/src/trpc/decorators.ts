@@ -20,6 +20,10 @@ export interface TrpcProcedureOptions<
 	middlewares?: TrpcMiddlewareDefinition[];
 }
 
+export type TrpcProcedureOutput<TOutputSchema extends ZodSchema | undefined> =
+	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+	TOutputSchema extends ZodSchema<infer T, any, any> ? T : undefined;
+
 export type TrpcProcedureInput<TInputSchema extends ZodSchema | undefined> =
 	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
 	TInputSchema extends ZodSchema<infer T, any, any> ? T : undefined;
@@ -41,20 +45,60 @@ export function TrpcRouter(metadata?: TrpcRouterMetadata): ClassDecorator {
 }
 
 /**
- * Kennzeichnet eine Methode innerhalb einer @TrpcRouter()-Klasse als tRPC-Prozedur.
+ * Type-safe decorator with automatic return type inference.
+ * The method signature is automatically constrained based on the decorator options.
+ *
+ * For queries without input:
+ * @TrpcProcedure({ outputType: z.string(), type: "query" })
+ * myMethod() { return "hello"; } // TypeScript enforces string return type
+ *
+ * For mutations with input:
+ * @TrpcProcedure({ inputType: z.object({msg: z.string()}), outputType: z.string(), type: "mutation" })
+ * myMethod(params) { return params.input.msg; } // TypeScript enforces correct parameter and return types
  */
+export function TrpcProcedure<TOutputSchema extends ZodSchema>(options: {
+	outputType: TOutputSchema;
+	type: "query" | "mutation";
+	isProtected?: boolean;
+	middlewares?: TrpcMiddlewareDefinition[];
+}): <T extends () => TrpcProcedureOutput<TOutputSchema>>(
+	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+	target: any,
+	propertyKey: string | symbol,
+	descriptor: TypedPropertyDescriptor<T>,
+) => TypedPropertyDescriptor<T>;
+
 export function TrpcProcedure<
-	TInputSchema extends ZodSchema | undefined, // Generic für inputType
-	TOutputSchema extends ZodSchema | undefined, // Generic für outputType
+	TInputSchema extends ZodSchema,
+	TOutputSchema extends ZodSchema,
+>(options: {
+	inputType: TInputSchema;
+	outputType: TOutputSchema;
+	type: "query" | "mutation";
+	isProtected?: boolean;
+	middlewares?: TrpcMiddlewareDefinition[];
+}): <
+	T extends (
+		params: TrpcProcedureParameters<TInputSchema>,
+	) => TrpcProcedureOutput<TOutputSchema>,
 >(
-	optionsArgument: TrpcProcedureOptions<TInputSchema, TOutputSchema>,
-): MethodDecorator {
-	return (
-		// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+	// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+	target: any,
+	propertyKey: string | symbol,
+	descriptor: TypedPropertyDescriptor<T>,
+) => TypedPropertyDescriptor<T>;
+
+export function TrpcProcedure<
+	TInputSchema extends ZodSchema | undefined = undefined,
+	TOutputSchema extends ZodSchema | undefined = undefined,
+>(optionsArgument: TrpcProcedureOptions<TInputSchema, TOutputSchema>) {
+	// biome-ignore lint/suspicious/noExplicitAny: TypeScript decorators require any types for flexible method signatures
+	return <T extends (...args: any[]) => any>(
+		// biome-ignore lint/suspicious/noExplicitAny: TypeScript decorator target parameter requires any type
 		target: any,
 		propertyKey: string | symbol,
-		descriptor: PropertyDescriptor,
-	) => {
+		descriptor: TypedPropertyDescriptor<T>,
+	): TypedPropertyDescriptor<T> => {
 		const procedures =
 			Reflect.getMetadata(TRPC_PROCEDURE_KEY, target.constructor) || [];
 
@@ -70,6 +114,8 @@ export function TrpcProcedure<
 			procedures,
 			target.constructor,
 		);
+
+		return descriptor;
 	};
 }
 

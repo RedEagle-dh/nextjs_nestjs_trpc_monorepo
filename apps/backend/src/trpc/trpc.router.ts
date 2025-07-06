@@ -1,4 +1,4 @@
-import { Inject, Injectable, OnModuleInit } from "@nestjs/common";
+import { Inject, Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { ModuleRef, ModulesContainer } from "@nestjs/core";
 import { AnyTRPCRouter, TRPCError } from "@trpc/server";
 import { ZodType, z } from "zod";
@@ -20,6 +20,7 @@ import {
 @Injectable()
 export class MainTrpcRouterFactory implements OnModuleInit {
 	private appRouterInstance!: AnyTRPCRouter;
+	private readonly logger = new Logger(MainTrpcRouterFactory.name);
 
 	constructor(
 		private readonly moduleRef: ModuleRef,
@@ -31,11 +32,11 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 	onModuleInit() {
 		this.appRouterInstance = this._buildAppRouter();
 		if (Object.keys(this.appRouterInstance._def.procedures).length > 0) {
-			console.log(
+			this.logger.debug(
 				`✅ Backend tRPC Router built with procedures: ${Object.keys(this.appRouterInstance._def.procedures).join(", ")}`,
 			);
 		} else {
-			console.warn(
+			this.logger.warn(
 				"⚠️ Backend tRPC Router built, but no procedures were found/registered!",
 			);
 		}
@@ -43,7 +44,7 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 
 	public getAppRouter(): AnyTRPCRouter {
 		if (!this.appRouterInstance) {
-			console.warn(
+			this.logger.warn(
 				"AppRouter not yet built, building now (should have happened in onModuleInit).",
 			);
 			this.appRouterInstance = this._buildAppRouter();
@@ -136,7 +137,7 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 						} catch (error) {
 							if (error instanceof TRPCError) throw error;
 							const procedurePath = `${domainKey !== "__ROOT__" ? `${domainKey}.` : ""}${methodName}`;
-							console.error(
+							this.logger.error(
 								`Error in tRPC procedure ${procedurePath}:`,
 								error,
 							);
@@ -159,7 +160,7 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 					}
 
 					if (proceduresToBuildGrouped[domainKey][methodName]) {
-						console.warn(
+						this.logger.warn(
 							`Procedure collision: ${domainKey}.${methodName} from class ${metatype.name} is overwriting a previously defined procedure for this domain.`,
 						);
 					}
@@ -175,7 +176,7 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 			const proceduresInDomain = proceduresToBuildGrouped[domainKey];
 			if (Object.keys(proceduresInDomain).length === 0) {
 				if (domainKey !== "__ROOT__") {
-					console.warn(
+					this.logger.warn(
 						`Domain '${domainKey}' has no procedures defined after processing all providers, skipping.`,
 					);
 				}
@@ -187,7 +188,7 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 			} else {
 				finalRouterDefinition[domainKey] =
 					createTRPCRouter(proceduresInDomain);
-				console.log(
+				this.logger.log(
 					`Created domain router '${domainKey}' with procedures: ${Object.keys(proceduresInDomain).join(", ")}`,
 				);
 			}
@@ -197,7 +198,7 @@ export class MainTrpcRouterFactory implements OnModuleInit {
 			Object.keys(finalRouterDefinition).length === 0 &&
 			Object.keys(proceduresToBuildGrouped.__ROOT__ || {}).length === 0
 		) {
-			console.warn(
+			this.logger.warn(
 				"No root procedures or domain routers were built. The appRouter will be empty.",
 			);
 		}

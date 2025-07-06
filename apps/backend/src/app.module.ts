@@ -7,6 +7,7 @@ import { CryptoModule } from "./crypto/crypto.module";
 import { DbModule } from "./db/db.module";
 import { RedisModule } from "./redis/redis.module";
 import { TRPCModule } from "./trpc/trpc.module";
+import { ExampleModule } from './example/example.module';
 
 @Module({
 	imports: [
@@ -19,6 +20,7 @@ import { TRPCModule } from "./trpc/trpc.module";
 		DbModule,
 		RedisModule,
 		CryptoModule,
+		ExampleModule,
 	],
 	controllers: [AppController],
 	providers: [AppService],

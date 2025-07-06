@@ -26,6 +26,16 @@ FROM pruner AS builder
 
 WORKDIR /app
 
+ENV NODE_ENV="production"
+
+ENV NEXT_TELEMETRY_DISABLED=1
+
+ARG NEXT_PUBLIC_BACKEND_URL
+ENV NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL:-http://localhost:3001}
+
+ARG AUTH_URL
+ENV AUTH_URL=${NEXTAUTH_URL}
+
 COPY --from=pruner /app/out/json/ .
 
 RUN pnpm install --prod=false
@@ -46,11 +56,13 @@ WORKDIR /app
 
 ENV NODE_ENV="production"
 
+ENV NEXT_TELEMETRY_DISABLED=1
+
 RUN apk add --no-cache \
     openssl
 
 RUN addgroup --system --gid 1001 nodejs \
- && adduser --system --uid 1001 nestapp
+    && adduser --system --uid 1001 nestapp
 
 COPY --from=pruner /app/out/json/ .
 

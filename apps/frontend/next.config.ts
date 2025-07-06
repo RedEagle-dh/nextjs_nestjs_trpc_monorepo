@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
 	rewrites: async () => [
 		{
 			source: "/api/trpc/:path*",
-			destination: `${process.env.BACKEND_URL}/trpc/:path*`,
+			destination: `${process.env.NEXT_PUBLIC_BACKEND_URL}/trpc/:path*`,
 		},
 	],
 };

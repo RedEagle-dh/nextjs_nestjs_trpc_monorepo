@@ -23,7 +23,6 @@ import {
 export class AuthService {
 	private readonly logger = new Logger(AuthService.name);
 	private readonly jwtSecret: string;
-	private readonly accessTokenExpiresInString: string;
 	private readonly accessTokenTtlSeconds: number;
 	private readonly refreshTokenTtlSeconds: number;
 	private readonly ENCRYPTION_KEY: string;
@@ -46,8 +45,6 @@ export class AuthService {
 		this.ENCRYPTION_KEY = encriptionKey;
 
 		this.jwtSecret = this.configService.get<string>("JWT_SECRET") as string;
-		this.accessTokenExpiresInString =
-			this.configService.get<string>("ACCESS_TOKEN_EXPIRES_IN") || "1h";
 		this.accessTokenTtlSeconds = Number.parseInt(
 			this.configService.get<string>("ACCESS_TOKEN_EXPIRES_IN_SECONDS") ||
 				(1 * 60 * 60).toString(),
@@ -75,32 +72,8 @@ export class AuthService {
 		expiresAt: number;
 	} {
 		const now = Math.floor(Date.now() / 1000);
-		let expiresInSecondsNum: number;
-		const unit = this.accessTokenExpiresInString.slice(-1);
-		const value = Number.parseInt(
-			this.accessTokenExpiresInString.slice(0, -1),
-			10,
-		);
-		switch (unit) {
-			case "s":
-				expiresInSecondsNum = value;
-				break;
-			case "m":
-				expiresInSecondsNum = value * 60;
-				break;
-			case "h":
-				expiresInSecondsNum = value * 60 * 60;
-				break;
-			case "d":
-				expiresInSecondsNum = value * 60 * 60 * 24;
-				break;
-			default:
-				throw new Error(
-					`Invalid format for ACCESS_TOKEN_EXPIRES_IN: ${this.accessTokenExpiresInString}`,
-				);
-		}
 
-		const expiresAt = now + expiresInSecondsNum;
+		const expiresAt = now + this.accessTokenTtlSeconds;
 		const token = jwt.sign(
 			{ ...payload, iat: now, exp: expiresAt },
 			this.jwtSecret,
@@ -195,7 +168,6 @@ export class AuthService {
 	async login(
 		params: TrpcProcedureParameters<typeof loginInputSchema>,
 	): Promise<z.infer<typeof tokenOutputSchema>> {
-		console.log("Calling login service");
 		const { input } = params;
 		const user = await this.dbService.user.findUnique({
 			where: { email: input.email },
