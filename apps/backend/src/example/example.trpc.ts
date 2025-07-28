@@ -20,11 +20,12 @@ const UserSchema = z.object({
 	email: z.string(),
 });
 
-/* Create the class and decoreate it with @Injectable() and @TrpcRouter({ domain: "example" }) */
+/* Create the class and decorate it with @Injectable() and @TrpcRouter({ domain: "cExample" }) */
 /* !IMPORTANT: You can not have duplicate domain names. If you have a prisma model name that is the same as the domain name, you will get an error */
+/* !IMPORTANT: Custom routers MUST use "c" prefix to avoid conflicts with Zenstack-generated routers */
 
 @Injectable()
-@TrpcRouter({ domain: "example" })
+@TrpcRouter({ domain: "cExample" })
 export class ExampleTrpcRouter {
 	constructor(private readonly exampleService: ExampleService) {}
 

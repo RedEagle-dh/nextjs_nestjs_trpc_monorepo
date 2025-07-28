@@ -51,23 +51,62 @@ export class TrpcContractGenerator {
 	private contractTrpcContextImportPath: string;
 	private zenstackRouterImportPath: string;
 	private importMappings: Record<string, string>;
+	private debugMode = false;
 
 	private collectedDeclarationInfo = new Map<string, DeclarationInfo>();
 	private visitedDeclarations = new Set<string>();
 	private collectedExternalImports = new Map<string, ExternalImportDetails>();
+	private errors: string[] = [];
+	private warnings: string[] = [];
 
-	constructor(config: TrpcContractGeneratorConfig) {
+	// Optimization: Cache for resolved dependencies
+	private dependencyCache = new Map<string, Set<string>>();
+	private processedNodes = new WeakSet<Node>();
+
+	constructor(config: TrpcContractGeneratorConfig & { debug?: boolean }) {
 		this.backendSrcPath = config.backendSrcDir;
 		this.contractGeneratedRouterFile = config.outputContractFile;
 		this.contractTrpcContextImportPath =
 			config.trpcContextImportPath || "./trpc-context";
 		this.zenstackRouterImportPath = config.zenstackRouterImportPath;
 		this.importMappings = config.importMappings || {};
+		this.debugMode =
+			config.debug || process.env.TRPC_GENERATOR_DEBUG === "true";
 
-		this.project = new Project({
-			tsConfigFilePath: config.backendTsConfig,
-		});
-		this.project.addSourceFilesAtPaths(`${this.backendSrcPath}/**/*.ts`);
+		try {
+			this.project = new Project({
+				tsConfigFilePath: config.backendTsConfig,
+			});
+			this.project.addSourceFilesAtPaths(
+				`${this.backendSrcPath}/**/*.ts`,
+			);
+		} catch (error) {
+			throw new Error(
+				`Failed to initialize TypeScript project: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+	}
+
+	private log(
+		level: "info" | "warn" | "error" | "debug",
+		message: string,
+		// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+		...args: any[]
+	): void {
+		const timestamp = new Date().toISOString();
+		const prefix = `[${timestamp}] [${level.toUpperCase()}]`;
+
+		if (level === "error") {
+			this.errors.push(message);
+			console.error(prefix, message, ...args);
+		} else if (level === "warn") {
+			this.warnings.push(message);
+			console.warn(prefix, message, ...args);
+		} else if (level === "debug" && this.debugMode) {
+			console.log(prefix, message, ...args);
+		} else if (level === "info") {
+			console.log(prefix, message, ...args);
+		}
 	}
 
 	private cleanExportKeyword(text: string): string {
@@ -125,17 +164,16 @@ export class TrpcContractGenerator {
 				const mappedModuleSpecifier =
 					this.importMappings[moduleSpecifier] || moduleSpecifier;
 
-				if (!this.collectedExternalImports.has(mappedModuleSpecifier)) {
-					this.collectedExternalImports.set(mappedModuleSpecifier, {
-						namedImports: new Set(),
-					});
-				}
 				const importDetails = this.collectedExternalImports.get(
 					mappedModuleSpecifier,
+				) || {
+					namedImports: new Set(),
+				};
+				importDetails.namedImports.add(exportName);
+				this.collectedExternalImports.set(
+					mappedModuleSpecifier,
+					importDetails,
 				);
-				if (importDetails) {
-					importDetails.namedImports.add(exportName);
-				}
 			}
 		}
 
@@ -285,8 +323,10 @@ export class TrpcContractGenerator {
 			return node.getText();
 		}
 
-		console.warn(
-			`WARN: Unerwarteter Knotentyp '${node.getKindName()}' in processSchemaNodeAndCollectDependencies. Text: ${node.getText().substring(0, 100)}`,
+		this.log(
+			"warn",
+			`Unerwarteter Knotentyp '${node.getKindName()}' in processSchemaNodeAndCollectDependencies`,
+			`Text: ${node.getText().substring(0, 100)}`,
 		);
 		return node.getText();
 	}
@@ -295,6 +335,12 @@ export class TrpcContractGenerator {
 		node: Node,
 		sourceFileContext: SourceFile,
 	): void {
+		// Optimization: Skip if already processed
+		if (this.processedNodes.has(node)) {
+			return;
+		}
+		this.processedNodes.add(node);
+
 		const symbol = node.getSymbol();
 		if (!symbol) {
 			return;
@@ -311,14 +357,15 @@ export class TrpcContractGenerator {
 
 		// Zod-Imports komplett ausschließen
 		if (this.isZodImport(declSourceFilePath)) {
-			console.log(`INFO: Skipping Zod import from ${declSourceFilePath}`);
+			this.log("debug", `Skipping Zod import from ${declSourceFilePath}`);
 			return;
 		}
 
 		// Database-Generated-Imports komplett ausschließen
 		if (this.isDatabaseGeneratedImport(declSourceFilePath)) {
-			console.log(
-				`INFO: Skipping Database-Generated import from ${declSourceFilePath}`,
+			this.log(
+				"debug",
+				`Skipping Database-Generated import from ${declSourceFilePath}`,
 			);
 			return;
 		}
@@ -771,8 +818,9 @@ export class TrpcContractGenerator {
 			}
 			if (fullySorted.has(declKey)) return;
 			if (visitedForSort.has(declKey)) {
-				console.warn(
-					`WARN: Zyklische Abhängigkeit erkannt bei '${declKey}'. Contract könnte unvollständig sein.`,
+				this.log(
+					"warn",
+					`Zyklische Abhängigkeit erkannt bei '${declKey}'. Contract könnte unvollständig sein.`,
 				);
 				return;
 			}
@@ -797,121 +845,185 @@ export class TrpcContractGenerator {
 	}
 
 	public async generateContract(): Promise<void> {
+		// Clear all caches and collections
 		this.collectedDeclarationInfo.clear();
 		this.visitedDeclarations.clear();
 		this.collectedExternalImports.clear();
+		this.dependencyCache.clear();
+		this.processedNodes = new WeakSet<Node>();
+		this.errors = [];
+		this.warnings = [];
+
+		this.log("info", "Starting tRPC contract generation...");
 
 		const sourceFiles = this.project.getSourceFiles();
 		const procedures: ExtractedProcedureInfo[] = [];
 
 		for (const sourceFile of sourceFiles) {
-			const classes = sourceFile.getClasses();
-			for (const classDeclaration of classes) {
-				const routerDecorator =
-					classDeclaration.getDecorator("TrpcRouter");
-				if (!routerDecorator) continue;
+			try {
+				const classes = sourceFile.getClasses();
+				for (const classDeclaration of classes) {
+					const routerDecorator =
+						classDeclaration.getDecorator("TrpcRouter");
+					if (!routerDecorator) continue;
 
-				let domain: string | undefined;
-				const routerDecoratorArg = routerDecorator.getArguments()[0];
-				if (
-					routerDecoratorArg &&
-					Node.isObjectLiteralExpression(routerDecoratorArg)
-				) {
-					const domainProperty = routerDecoratorArg.getProperty(
-						"domain",
-					) as PropertyAssignment | undefined;
-					if (domainProperty) {
-						const initializer = domainProperty.getInitializerIfKind(
-							SyntaxKind.StringLiteral,
-						);
-						if (initializer) domain = initializer.getLiteralText();
-					}
-				}
-
-				for (const method of classDeclaration.getMethods()) {
-					const procDecorator = method.getDecorator("TrpcProcedure");
-					if (!procDecorator) continue;
-
-					const procedureName = method.getName();
-					const procDecoratorArg = procDecorator.getArguments()[0];
+					let domain: string | undefined;
+					const routerDecoratorArg =
+						routerDecorator.getArguments()[0];
 					if (
-						!procDecoratorArg ||
-						!Node.isObjectLiteralExpression(procDecoratorArg)
-					)
-						continue;
+						routerDecoratorArg &&
+						Node.isObjectLiteralExpression(routerDecoratorArg)
+					) {
+						const domainProperty = routerDecoratorArg.getProperty(
+							"domain",
+						) as PropertyAssignment | undefined;
+						if (domainProperty) {
+							const initializer =
+								domainProperty.getInitializerIfKind(
+									SyntaxKind.StringLiteral,
+								);
+							if (initializer) {
+								domain = initializer.getLiteralText();
 
-					const typeProperty = procDecoratorArg.getProperty("type") as
-						| PropertyAssignment
-						| undefined;
-					const isProtectedProperty = procDecoratorArg.getProperty(
-						"isProtected",
-					) as PropertyAssignment | undefined;
-
-					const trpcType = typeProperty
-						?.getInitializerIfKind(SyntaxKind.StringLiteral)
-						?.getLiteralText() as "query" | "mutation";
-
-					let isProtected = false;
-					if (isProtectedProperty) {
-						const initializer =
-							isProtectedProperty.getInitializer();
-						if (
-							initializer &&
-							initializer.getKind() === SyntaxKind.TrueKeyword
-						) {
-							isProtected = true;
+								// Validate 'c' prefix convention for custom routers
+								if (domain && !domain.startsWith("c")) {
+									this.log(
+										"warn",
+										`Custom tRPC router '${classDeclaration.getName()}' has domain '${domain}' without 'c' prefix. ` +
+											`This may conflict with Zenstack-generated routers. Consider using 'c${domain.charAt(0).toUpperCase() + domain.slice(1)}'.`,
+										`File: ${sourceFile.getFilePath()}`,
+									);
+								}
+							}
 						}
 					}
 
-					if (!trpcType) {
-						console.warn(
-							`Procedure '${procedureName}' in '${classDeclaration.getName()}' is missing 'type'. Skipping.`,
-						);
-						continue;
+					for (const method of classDeclaration.getMethods()) {
+						try {
+							const procDecorator =
+								method.getDecorator("TrpcProcedure");
+							if (!procDecorator) continue;
+
+							const procedureName = method.getName();
+							const procDecoratorArg =
+								procDecorator.getArguments()[0];
+							if (
+								!procDecoratorArg ||
+								!Node.isObjectLiteralExpression(
+									procDecoratorArg,
+								)
+							) {
+								this.log(
+									"warn",
+									`Invalid @TrpcProcedure decorator on method '${procedureName}' - missing or invalid options object`,
+								);
+								continue;
+							}
+
+							const typeProperty = procDecoratorArg.getProperty(
+								"type",
+							) as PropertyAssignment | undefined;
+							const isProtectedProperty =
+								procDecoratorArg.getProperty("isProtected") as
+									| PropertyAssignment
+									| undefined;
+
+							const trpcType = typeProperty
+								?.getInitializerIfKind(SyntaxKind.StringLiteral)
+								?.getLiteralText() as "query" | "mutation";
+
+							let isProtected = false;
+							if (isProtectedProperty) {
+								const initializer =
+									isProtectedProperty.getInitializer();
+								if (
+									initializer &&
+									initializer.getKind() ===
+										SyntaxKind.TrueKeyword
+								) {
+									isProtected = true;
+								}
+							}
+
+							if (!trpcType) {
+								this.log(
+									"error",
+									`Procedure '${procedureName}' in '${classDeclaration.getName()}' is missing 'type'. Skipping.`,
+								);
+								continue;
+							}
+
+							const inputSchemaNode =
+								this.getZodSchemaInitializerNode(
+									procDecorator,
+									"inputType",
+								);
+							const outputSchemaNode =
+								this.getZodSchemaInitializerNode(
+									procDecorator,
+									"outputType",
+								);
+
+							const inputTypeCode =
+								this.processSchemaNodeAndCollectDependencies(
+									inputSchemaNode,
+									sourceFile,
+								);
+							const outputTypeCode = outputSchemaNode
+								? this.processSchemaNodeAndCollectDependencies(
+										outputSchemaNode,
+										sourceFile,
+									)
+								: undefined;
+
+							const generatedOutputPlaceholder =
+								this.generatePlaceholderFromZodNode(
+									outputSchemaNode,
+									sourceFile,
+									0,
+								);
+
+							procedures.push({
+								procedureName,
+								domain,
+								trpcType,
+								isProtected,
+								inputTypeCode,
+								outputTypeCode,
+								generatedOutputPlaceholder,
+							});
+						} catch (error) {
+							this.log(
+								"error",
+								`Failed to process procedure '${method.getName()}' in class '${classDeclaration.getName()}'`,
+								`Error: ${error instanceof Error ? error.message : String(error)}`,
+							);
+						}
 					}
-
-					const inputSchemaNode = this.getZodSchemaInitializerNode(
-						procDecorator,
-						"inputType",
-					);
-					const outputSchemaNode = this.getZodSchemaInitializerNode(
-						procDecorator,
-						"outputType",
-					);
-
-					const inputTypeCode =
-						this.processSchemaNodeAndCollectDependencies(
-							inputSchemaNode,
-							sourceFile,
-						);
-					const outputTypeCode = outputSchemaNode
-						? this.processSchemaNodeAndCollectDependencies(
-								outputSchemaNode,
-								sourceFile,
-							)
-						: undefined;
-
-					const generatedOutputPlaceholder =
-						this.generatePlaceholderFromZodNode(
-							outputSchemaNode,
-							sourceFile,
-							0,
-						);
-
-					procedures.push({
-						procedureName,
-						domain,
-						trpcType,
-						isProtected,
-						inputTypeCode,
-						outputTypeCode,
-						generatedOutputPlaceholder,
-					});
 				}
+			} catch (error) {
+				this.log(
+					"error",
+					`Failed to process file '${sourceFile.getFilePath()}'`,
+					`Error: ${error instanceof Error ? error.message : String(error)}`,
+				);
 			}
 		}
 
 		const orderedLocalDeclarations = this.topologicallySortDeclarations();
+
+		// Check for errors before writing
+		if (this.errors.length > 0) {
+			this.log(
+				"error",
+				`Contract generation failed with ${this.errors.length} error(s)`,
+			);
+			for (const error of this.errors) {
+				console.error(`  - ${error}`);
+			}
+			throw new Error("Contract generation failed due to errors");
+		}
+
 		this.writeContractFile(procedures, orderedLocalDeclarations);
 	}
 
@@ -1300,8 +1412,7 @@ export class TrpcContractGenerator {
 		procedures: ExtractedProcedureInfo[],
 		orderedLocalDeclarations: string[],
 	): void {
-		let code =
-			"// @ts-nocheck \n// AUTOGENERATED FILE - DO NOT EDIT MANUALLY\n\n";
+		let code = "// AUTOGENERATED FILE - DO NOT EDIT MANUALLY\n\n";
 		code += `import { createRouter as createGeneratedRouter } from '${this.zenstackRouterImportPath}';\n\n`;
 		code += "import { z } from 'zod';\n";
 		code += `import type { TRPCContext } from '${this.contractTrpcContextImportPath}';\n`;
@@ -1319,9 +1430,11 @@ export class TrpcContractGenerator {
 						importParts.push(` ${details.namespaceImport}`);
 					}
 					if (details.namedImports && details.namedImports.size > 0) {
-						importParts.push(
-							`{ ${[...details.namedImports].sort().join(", ")} }`,
-						);
+						// Sort and deduplicate named imports
+						const uniqueImports = [
+							...new Set(details.namedImports),
+						].sort();
+						importParts.push(`{ ${uniqueImports.join(", ")} }`);
 					}
 
 					if (importParts.length > 0) {

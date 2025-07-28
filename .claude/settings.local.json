@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm:*)",
+      "Bash(npx tsc:*)",
+      "Bash(TRPC_GENERATOR_DEBUG=true pnpm --filter=backend generate:trpc-contract)"
+    ],
+    "deny": []
+  }
+}
