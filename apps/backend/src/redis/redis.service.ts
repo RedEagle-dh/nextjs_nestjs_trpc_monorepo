@@ -3,11 +3,13 @@ import {
 	Injectable,
 	OnModuleDestroy,
 	OnModuleInit,
+	Logger,
 } from "@nestjs/common";
 import type { Redis as RedisClientType, RedisKey } from "ioredis";
 
 @Injectable()
 export class RedisService implements OnModuleDestroy, OnModuleInit {
+	private readonly logger = new Logger(RedisService.name);
 	constructor(
 		@Inject("REDIS_CLIENT") private readonly redisClient: RedisClientType,
 	) {}
@@ -15,22 +17,22 @@ export class RedisService implements OnModuleDestroy, OnModuleInit {
 	async onModuleInit() {
 		try {
 			await this.redisClient.ping();
-			console.log("Successfully connected to Redis and pinged.");
+			this.logger.log("Successfully connected to Redis and pinged.");
 		} catch (error) {
-			console.error("Failed to connect to Redis or ping failed:", error);
+			this.logger.error("Failed to connect to Redis or ping failed:", error);
 		}
 	}
 
 	async onModuleDestroy() {
 		await this.redisClient.quit();
-		console.log("Disconnected from Redis.");
+		this.logger.log("Disconnected from Redis.");
 	}
 
 	async get(key: RedisKey): Promise<string | null> {
 		try {
 			return await this.redisClient.get(key);
 		} catch (error) {
-			console.error(`Redis GET error for key ${String(key)}:`, error);
+			this.logger.error(`Redis GET error for key ${String(key)}:`, error);
 			throw error;
 		}
 	}
@@ -54,7 +56,7 @@ export class RedisService implements OnModuleDestroy, OnModuleInit {
 
 			return keys;
 		} catch (error) {
-			console.error(`Redis SCAN error for pattern ${pattern}:`, error);
+			this.logger.error(`Redis SCAN error for pattern ${pattern}:`, error);
 			throw error;
 		}
 	}
@@ -90,7 +92,7 @@ export class RedisService implements OnModuleDestroy, OnModuleInit {
 			}
 			return await this.redisClient.set(key, value);
 		} catch (error) {
-			console.error(`Redis SET error for key ${String(key)}:`, error);
+			this.logger.error(`Redis SET error for key ${String(key)}:`, error);
 			throw error;
 		}
 	}
@@ -110,7 +112,7 @@ export class RedisService implements OnModuleDestroy, OnModuleInit {
 		try {
 			return await this.redisClient.setex(key, ttlSeconds, value);
 		} catch (error) {
-			console.error(`Redis SETEX error for key ${String(key)}:`, error);
+			this.logger.error(`Redis SETEX error for key ${String(key)}:`, error);
 			throw error;
 		}
 	}
@@ -121,7 +123,7 @@ export class RedisService implements OnModuleDestroy, OnModuleInit {
 			if (keysToDelete.length === 0) return 0;
 			return await this.redisClient.del(...keysToDelete);
 		} catch (error) {
-			console.error(`Redis DEL error for keys ${String(keys)}:`, error);
+			this.logger.error(`Redis DEL error for keys ${String(keys)}:`, error);
 			throw error;
 		}
 	}
@@ -132,7 +134,7 @@ export class RedisService implements OnModuleDestroy, OnModuleInit {
 			if (keysToCheck.length === 0) return 0;
 			return await this.redisClient.exists(...keysToCheck);
 		} catch (error) {
-			console.error(
+			this.logger.error(
 				`Redis EXISTS error for keys ${String(keys)}:`,
 				error,
 			);
@@ -144,7 +146,7 @@ export class RedisService implements OnModuleDestroy, OnModuleInit {
 		try {
 			return await this.redisClient.incr(key);
 		} catch (error) {
-			console.error(`Redis INCR error for key ${String(key)}:`, error);
+			this.logger.error(`Redis INCR error for key ${String(key)}:`, error);
 			throw error;
 		}
 	}
@@ -153,7 +155,7 @@ export class RedisService implements OnModuleDestroy, OnModuleInit {
 		try {
 			return await this.redisClient.decr(key);
 		} catch (error) {
-			console.error(`Redis DECR error for key ${String(key)}:`, error);
+			this.logger.error(`Redis DECR error for key ${String(key)}:`, error);
 			throw error;
 		}
 	}
@@ -168,7 +170,7 @@ export class RedisService implements OnModuleDestroy, OnModuleInit {
 		try {
 			return await this.redisClient.expire(key, ttlSeconds);
 		} catch (error) {
-			console.error(`Redis EXPIRE error for key ${String(key)}:`, error);
+			this.logger.error(`Redis EXPIRE error for key ${String(key)}:`, error);
 			throw error;
 		}
 	}
@@ -177,7 +179,7 @@ export class RedisService implements OnModuleDestroy, OnModuleInit {
 		try {
 			return await this.redisClient.ttl(key);
 		} catch (error) {
-			console.error(`Redis TTL error for key ${String(key)}:`, error);
+			this.logger.error(`Redis TTL error for key ${String(key)}:`, error);
 			throw error;
 		}
 	}
@@ -190,12 +192,12 @@ export class RedisService implements OnModuleDestroy, OnModuleInit {
 	 */
 	async keys(pattern: string): Promise<string[]> {
 		try {
-			console.warn(
+			this.logger.warn(
 				`Redis KEYS command used with pattern "${pattern}". Use with caution in production.`,
 			);
 			return await this.redisClient.keys(pattern);
 		} catch (error) {
-			console.error(`Redis KEYS error for pattern ${pattern}:`, error);
+			this.logger.error(`Redis KEYS error for pattern ${pattern}:`, error);
 			throw error;
 		}
 	}
@@ -207,7 +209,7 @@ export class RedisService implements OnModuleDestroy, OnModuleInit {
 		try {
 			return JSON.parse(data) as T;
 		} catch (error) {
-			console.error(
+			this.logger.error(
 				`Failed to parse JSON for key ${String(key)}:`,
 				error,
 			);
@@ -225,7 +227,7 @@ export class RedisService implements OnModuleDestroy, OnModuleInit {
 			const stringValue = JSON.stringify(value);
 			return await this.set(key, stringValue, ttlSeconds, mode);
 		} catch (error) {
-			console.error(
+			this.logger.error(
 				`Failed to stringify JSON for key ${String(key)}:`,
 				error,
 			);

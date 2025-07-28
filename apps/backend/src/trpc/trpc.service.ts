@@ -1,5 +1,5 @@
 import { TRPCContext } from "@mono/database/";
-import { Injectable, OnModuleInit } from "@nestjs/common";
+import { Injectable, OnModuleInit, Logger } from "@nestjs/common";
 import { AnyTRPCRouter } from "@trpc/server";
 import {
 	CreateHTTPContextOptions,
@@ -12,6 +12,7 @@ import { MainTrpcRouterFactory } from "./trpc.router";
 
 @Injectable()
 export class TRPCService implements OnModuleInit {
+	private readonly logger = new Logger(TRPCService.name);
 	private httpHandler!: ReturnType<typeof createHTTPHandler<AnyTRPCRouter>>;
 	private actualAppRouter!: AnyTRPCRouter;
 
@@ -28,12 +29,12 @@ export class TRPCService implements OnModuleInit {
 			!this.actualAppRouter ||
 			Object.keys(this.actualAppRouter._def.procedures).length === 0
 		) {
-			console.error(
-				"⚠️ TRPCService: Actual appRouter from factory is missing or empty! Check MainTrpcRouterFactory logs.",
+			this.logger.error(
+				"Actual appRouter from factory is missing or empty! Check MainTrpcRouterFactory logs.",
 			);
 		} else {
-			console.log(
-				"✅ TRPCService: Initializing with actual appRouter from factory.",
+			this.logger.log(
+				"Initializing with actual appRouter from factory.",
 			);
 		}
 
@@ -68,9 +69,9 @@ export class TRPCService implements OnModuleInit {
 				return { req, res, session, prisma: this.dbService };
 			},
 			onError: ({ error, path, type, input, ctx }) => {
-				console.log(ctx);
-				console.error(
-					`tRPC Error in TRPCService (executing actual router) - Path: ${path}, Type: ${type}, Input: ${JSON.stringify(input)}, Error: ${error.message}`,
+				this.logger.debug({ ctx });
+				this.logger.error(
+					`tRPC Error (executing actual router) - Path: ${path}, Type: ${type}, Input: ${JSON.stringify(input)}, Error: ${error.message}`,
 				);
 			},
 		});
@@ -78,8 +79,8 @@ export class TRPCService implements OnModuleInit {
 
 	async handleRequest(req: Request, res: Response) {
 		if (!this.httpHandler) {
-			console.error(
-				"FATAL: TRPCService.httpHandler not initialized. Likely an issue in onModuleInit or MainTrpcRouterFactory.",
+			this.logger.error(
+				"FATAL: httpHandler not initialized. Likely an issue in onModuleInit or MainTrpcRouterFactory.",
 			);
 			res.status(500).json({ message: "tRPC handler not initialized" });
 			return;

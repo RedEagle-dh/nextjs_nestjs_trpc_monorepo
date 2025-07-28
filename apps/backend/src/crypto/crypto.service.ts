@@ -5,11 +5,12 @@ import {
 	randomBytes,
 	timingSafeEqual,
 } from "node:crypto";
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { compare, hash } from "bcrypt";
 
 @Injectable()
 export class CryptoService {
+	private readonly logger = new Logger(CryptoService.name);
 	private readonly ALGORITHM = "aes-256-gcm";
 	private readonly IV_LENGTH = 16;
 	private readonly AUTH_TAG_LENGTH = 16;
@@ -92,7 +93,7 @@ export class CryptoService {
 
 			return decrypted;
 		} catch (error) {
-			console.error("Decryption failed:", error);
+			this.logger.error("Decryption failed:", error);
 			return null;
 		}
 	}

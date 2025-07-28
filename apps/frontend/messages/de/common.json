@@ -1,0 +1,25 @@
+{
+  "button": {
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "create": "Erstellen",
+    "back": "Zurück",
+    "next": "Weiter",
+    "submit": "Absenden"
+  },
+  "status": {
+    "loading": "Laden...",
+    "success": "Erfolgreich",
+    "error": "Fehler",
+    "warning": "Warnung",
+    "info": "Information"
+  },
+  "validation": {
+    "required": "Dieses Feld ist erforderlich",
+    "email": "Bitte geben Sie eine gültige E-Mail-Adresse ein",
+    "minLength": "Mindestens {min} Zeichen erforderlich",
+    "maxLength": "Maximal {max} Zeichen erlaubt"
+  }
+}

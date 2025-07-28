@@ -1,4 +1,4 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { Injectable, OnModuleDestroy, OnModuleInit, Logger } from "@nestjs/common";
 
 import { PrismaClient } from "@mono/database/prisma/client";
 
@@ -7,6 +7,7 @@ export class DbService
 	extends PrismaClient
 	implements OnModuleInit, OnModuleDestroy
 {
+	private readonly logger = new Logger(DbService.name);
 	constructor() {
 		super({
 			datasources: {
@@ -19,11 +20,11 @@ export class DbService
 
 	onModuleInit() {
 		this.$connect();
-		console.log("Prisma Client connected to the database.");
+		this.logger.log("Prisma Client connected to the database.");
 	}
 
 	onModuleDestroy() {
 		this.$disconnect();
-		console.log("Prisma Client disconnected from the database.");
+		this.logger.log("Prisma Client disconnected from the database.");
 	}
 }
