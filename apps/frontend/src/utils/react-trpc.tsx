@@ -8,8 +8,8 @@ import { getSession, signOut } from "next-auth/react";
 import { useState } from "react";
 
 const trpcApiUrl = process.env.NEXT_PUBLIC_BACKEND_URL
-	? `${process.env.NEXT_PUBLIC_BACKEND_URL}/trpc`
-	: "http://localhost:3001/trpc";
+	? `${process.env.NEXT_PUBLIC_BACKEND_URL}`
+	: "/api/trpc";
 
 function makeQueryClient() {
 	return new QueryClient({
