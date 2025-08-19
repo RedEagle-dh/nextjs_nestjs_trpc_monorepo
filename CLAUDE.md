@@ -207,7 +207,7 @@ ENCRYPTION_KEY=your_base64_key
 PORT=3000
 AUTH_SECRET=your_auth_secret
 AUTH_URL=http://localhost:3000
-NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
+BACKEND_URL=http://localhost:3001
 HOSTNAME=0.0.0.0
 ```
 

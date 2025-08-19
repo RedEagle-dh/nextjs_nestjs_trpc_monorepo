@@ -7,10 +7,6 @@ import { observable } from "@trpc/server/observable";
 import { getSession, signOut } from "next-auth/react";
 import { useState } from "react";
 
-const trpcApiUrl = process.env.NEXT_PUBLIC_BACKEND_URL
-	? `${process.env.NEXT_PUBLIC_BACKEND_URL}`
-	: "/api/trpc";
-
 function makeQueryClient() {
 	return new QueryClient({
 		defaultOptions: {
@@ -99,7 +95,7 @@ export function ReactTRPCProvider({ children }: { children: React.ReactNode }) {
 						Math.min(1000 * 2 ** attemptIndex, 30000),
 				}),
 				httpBatchLink({
-					url: trpcApiUrl,
+					url: "/api/trpc",
 					headers: async () => {
 						const baseHeaders: Record<string, string> = {};
 
